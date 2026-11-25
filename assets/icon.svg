@@ -1,0 +1,48 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1024 1024">
+  <defs>
+    <radialGradient id="wood" cx="0.5" cy="0.38" r="0.7">
+      <stop offset="0" stop-color="#5a3c22"/>
+      <stop offset="0.7" stop-color="#3a2614"/>
+      <stop offset="1" stop-color="#22160b"/>
+    </radialGradient>
+    <linearGradient id="iron" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#9a9a96"/>
+      <stop offset="0.5" stop-color="#5c5c58"/>
+      <stop offset="1" stop-color="#3a3a37"/>
+    </linearGradient>
+    <linearGradient id="gold" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#ffd27a"/>
+      <stop offset="0.55" stop-color="#f0a040"/>
+      <stop offset="1" stop-color="#c06a14"/>
+    </linearGradient>
+  </defs>
+  <!-- round shield: iron rim, wooden face -->
+  <circle cx="512" cy="512" r="488" fill="url(#iron)"/>
+  <circle cx="512" cy="512" r="488" fill="none" stroke="#1a1a18" stroke-width="16"/>
+  <circle cx="512" cy="512" r="430" fill="url(#wood)" stroke="#1a110a" stroke-width="12"/>
+  <g stroke="#2a1b0e" stroke-width="10" opacity="0.55">
+    <line x1="312" y1="110" x2="312" y2="914"/>
+    <line x1="452" y1="84" x2="452" y2="940"/>
+    <line x1="592" y1="84" x2="592" y2="940"/>
+    <line x1="732" y1="110" x2="732" y2="914"/>
+  </g>
+  <!-- rivets -->
+  <g fill="#c9c9c2" stroke="#2a2a28" stroke-width="6">
+    <circle cx="512" cy="54" r="20"/><circle cx="512" cy="970" r="20"/>
+    <circle cx="54" cy="512" r="20"/><circle cx="970" cy="512" r="20"/>
+    <circle cx="188" cy="188" r="20"/><circle cx="836" cy="188" r="20"/>
+    <circle cx="188" cy="836" r="20"/><circle cx="836" cy="836" r="20"/>
+  </g>
+  <!-- longship: hull with curled prow and stern, mast and sail -->
+  <g stroke="#1b0f06" stroke-width="22" stroke-linejoin="round" stroke-linecap="round">
+    <rect x="483" y="220" width="34" height="390" rx="8" fill="url(#gold)"/>
+    <path d="M520 262 L742 560 L520 560 Z" fill="url(#gold)"/>
+    <path d="M196 598 C 300 690, 724 690, 828 598 L 790 690 C 772 740, 728 770, 676 770 L 348 770 C 296 770, 252 740, 234 690 Z" fill="url(#gold)"/>
+    <path d="M214 640 C 170 560, 180 470, 250 440 C 300 420, 330 470, 296 500" fill="none" stroke="url(#gold)" stroke-width="34"/>
+    <path d="M810 640 C 854 560, 844 470, 774 440 C 724 420, 694 470, 728 500" fill="none" stroke="url(#gold)" stroke-width="34"/>
+  </g>
+  <g fill="#1b0f06" opacity="0.8">
+    <circle cx="330" cy="700" r="16"/><circle cx="420" cy="712" r="16"/><circle cx="512" cy="716" r="16"/>
+    <circle cx="604" cy="712" r="16"/><circle cx="694" cy="700" r="16"/>
+  </g>
+</svg>
