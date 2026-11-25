@@ -12,7 +12,25 @@ permissions:
   contents: write
 
 jobs:
+  # Releases are signed so installed copies can verify updates. Without the signing key
+  # secret the build is skipped (a release can still be published from a local build).
+  check:
+    runs-on: ubuntu-latest
+    outputs:
+      has_key: ${{ steps.key.outputs.has_key }}
+    steps:
+      - id: key
+        env:
+          KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
+        run: |
+          if [ -n "$KEY" ]; then echo "has_key=true" >> "$GITHUB_OUTPUT"; else
+            echo "has_key=false" >> "$GITHUB_OUTPUT"
+            echo "::warning::TAURI_SIGNING_PRIVATE_KEY isn't set, so the release build was skipped."
+          fi
+
   release:
+    needs: check
+    if: needs.check.outputs.has_key == 'true'
     runs-on: windows-latest
     steps:
       - uses: actions/checkout@v4
