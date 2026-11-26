@@ -130,6 +130,10 @@ pub struct Prefs {
     show_deprecated: Option<bool>,
     backdrop: Option<String>,
     launch_guard: Option<bool>,
+    tray_while_playing: Option<bool>,
+    discord_status: Option<bool>,
+    discord_app_id: Option<String>,
+    auto_update: Option<bool>,
     backup_before_launch: Option<bool>,
     backup_keep: Option<u32>,
     sounds: Option<bool>,
@@ -139,6 +143,11 @@ pub struct Prefs {
 
 #[tauri::command]
 pub fn save_prefs(state: State<'_, AppState>, prefs: Prefs) -> Result<Settings> {
+    if let Some(id) = prefs.discord_app_id.as_deref().map(str::trim) {
+        if !id.is_empty() && !crate::discord::valid_app_id(id) {
+            return Err(AppError::msg("That doesn't look like a Discord Application ID (a long number)."));
+        }
+    }
     state.update_settings(|s| {
         if let Some(t) = prefs.theme {
             s.theme = t;
@@ -157,6 +166,18 @@ pub fn save_prefs(state: State<'_, AppState>, prefs: Prefs) -> Result<Settings> 
         }
         if let Some(v) = prefs.launch_guard {
             s.launch_guard = v;
+        }
+        if let Some(v) = prefs.tray_while_playing {
+            s.tray_while_playing = v;
+        }
+        if let Some(v) = &prefs.discord_app_id {
+            s.discord_app_id = v.trim().to_string();
+        }
+        if let Some(v) = prefs.discord_status {
+            s.discord_status = v;
+        }
+        if let Some(v) = prefs.auto_update {
+            s.auto_update = v;
         }
         if let Some(v) = prefs.backup_before_launch {
             s.backup_before_launch = v;
@@ -1015,22 +1036,51 @@ pub fn spawn_game_watcher(app: AppHandle) {
         let mut sys = sysinfo::System::new();
         let mut last = false;
         let mut watch: Option<crate::guard::LogWatch> = None;
+        // (start, profile, crash reports that already existed)
+        let mut session: Option<(i64, Option<String>, Vec<String>)> = None;
         loop {
             let now = launch::is_running(&mut sys);
             if now != last {
                 last = now;
                 if let Some(state) = app.try_state::<AppState>() {
                     state.running.store(now, Ordering::Relaxed);
+                    let profile = if now { state.settings().game.and_then(|g| crate::guard::modded_profile(&g.path)) } else { None };
                     // follow the mod log of a modded session to catch mods that error nonstop
-                    watch = if now {
-                        state
-                            .settings()
-                            .game
-                            .and_then(|g| crate::guard::modded_profile(&g.path))
-                            .map(|p| crate::guard::LogWatch::new(&p))
-                    } else {
-                        None
-                    };
+                    watch = profile.as_deref().map(crate::guard::LogWatch::new);
+                    let settings = state.settings();
+                    let discord_id = (settings.discord_status && crate::discord::valid_app_id(&settings.discord_app_id))
+                        .then(|| settings.discord_app_id.clone());
+                    if let Some(win) = app.get_webview_window("main") {
+                        if now && settings.tray_while_playing {
+                            let _ = win.hide();
+                        } else if !now && settings.tray_while_playing {
+                            let _ = win.show();
+                            let _ = win.unminimize();
+                            let _ = win.set_focus();
+                        }
+                    }
+                    if let Some(tray) = app.tray_by_id("main") {
+                        let _ = tray.set_tooltip(Some(if now { "ModHeim · Valheim is running" } else { "ModHeim" }));
+                    }
+                    if now {
+                        let start = chrono::Utc::now().timestamp();
+                        if let Some(id) = discord_id {
+                            let mods = profile
+                                .as_deref()
+                                .and_then(|p| profiles::load(p).ok())
+                                .map(|p| p.mods.iter().filter(|m| m.enabled && m.full_name != BEPINEX_PACK).count())
+                                .unwrap_or(0);
+                            crate::discord::playing(id, profile.clone(), mods, start);
+                        }
+                        session = Some((start, profile, crate::stats::crash_reports()));
+                    } else if let Some((start, profile, before)) = session.take() {
+                        if let Some(id) = discord_id {
+                            crate::discord::clear(id);
+                        }
+                        let crashed = crate::stats::crash_reports().iter().any(|c| !before.contains(c));
+                        let errors = profile.as_deref().map(crate::stats::log_errors).unwrap_or(0);
+                        crate::stats::record(crate::stats::Session { start, end: chrono::Utc::now().timestamp(), profile, errors, crashed });
+                    }
                 }
                 let _ = app.emit("game-running", now);
             }

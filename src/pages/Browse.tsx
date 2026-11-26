@@ -5,6 +5,7 @@ import { Check, Download, Loader2, RefreshCw, Search, Star } from "lucide-react"
 import { api, errorText, formatCount, timeAgo, type SearchQuery } from "../api";
 import { keys, useAction, useIndexInfo, useProfile, useSettings } from "../hooks";
 import { useUi } from "../store";
+import { RuneLoader } from "../components/RuneLoader";
 import { ModIcon, PageHead } from "../components/Chrome";
 
 const PAGE = 60;
@@ -66,20 +67,30 @@ export function BrowsePage() {
   const installed = useMemo(() => new Map(profile?.mods.map((m) => [m.fullName, m.version])), [profile]);
 
   const scrollRef = useRef<HTMLDivElement>(null);
+  // cards per row follows the window width
+  const [cols, setCols] = useState(3);
+  useEffect(() => {
+    const el = scrollRef.current;
+    if (!el) return;
+    const ro = new ResizeObserver(() => setCols(Math.max(1, Math.floor((el.clientWidth - 64 + 14) / (290 + 14)))));
+    ro.observe(el);
+    return () => ro.disconnect();
+  }, [index.data?.loaded]);
+  const rows = Math.ceil(items.length / cols);
   const virt = useVirtualizer({
-    count: items.length,
+    count: rows,
     getScrollElement: () => scrollRef.current,
-    estimateSize: () => 82,
-    overscan: 8,
+    estimateSize: () => 200,
+    overscan: 3,
   });
   const vItems = virt.getVirtualItems();
 
   useEffect(() => {
     const last = vItems[vItems.length - 1];
-    if (last && last.index >= items.length - 12 && results.hasNextPage && !results.isFetchingNextPage) {
+    if (last && (last.index + 1) * cols >= items.length - 12 && results.hasNextPage && !results.isFetchingNextPage) {
       results.fetchNextPage();
     }
-  }, [vItems, items.length, results]);
+  }, [vItems, items.length, results, cols]);
 
   useEffect(() => {
     scrollRef.current?.scrollTo({ top: 0 });
@@ -144,8 +155,7 @@ export function BrowsePage() {
       <div className="list-scroll" ref={scrollRef}>
         {!index.data?.loaded ? (
           <div className="empty">
-            <Loader2 className="spin" />
-            <p>Downloading the mod list (about 15 MB, first time only)…</p>
+            <RuneLoader label="Downloading the mod list (about 15 MB, first time only)…" />
           </div>
         ) : results.error ? (
           <div className="empty">
@@ -160,66 +170,86 @@ export function BrowsePage() {
           </div>
         ) : (
           <div style={{ height: virt.getTotalSize(), position: "relative" }}>
-            {vItems.map((v) => {
-              const m = items[v.index];
-              const have = installed.get(m.fullName);
-              const busy = install.isPending && pending === m.fullName;
-              return (
-                <div
-                  key={m.fullName}
-                  data-index={v.index}
-                  ref={virt.measureElement}
-                  style={{ position: "absolute", top: 0, left: 0, right: 0, transform: `translateY(${v.start}px)` }}
-                >
-                  <div
-                    className={`mod-row${detail === m.fullName ? " selected" : ""}`}
-                    onClick={() => openDetail(m.fullName)}
-                  >
-                    <ModIcon src={m.icon} name={m.name} />
-                    <div className="mod-main">
-                      <div className="mod-name">
-                        {m.name.replace(/_/g, " ")}
-                        <span className="owner">by {m.owner}</span>
-                        {m.pinned && <span className="badge">Pinned</span>}
-                        {m.deprecated && <span className="badge bad">Deprecated</span>}
+            {vItems.map((v) => (
+              <div
+                key={v.key}
+                data-index={v.index}
+                ref={virt.measureElement}
+                className="card-row"
+                style={{ transform: `translateY(${v.start}px)`, gridTemplateColumns: `repeat(${cols}, minmax(0, 1fr))` }}
+              >
+                {items.slice(v.index * cols, v.index * cols + cols).map((m) => {
+                  const have = installed.get(m.fullName);
+                  const busy = install.isPending && pending === m.fullName;
+                  return (
+                    <div
+                      key={m.fullName}
+                      className={`mod-card${detail === m.fullName ? " selected" : ""}`}
+                      role="button"
+                      tabIndex={0}
+                      onClick={() => openDetail(m.fullName)}
+                      onKeyDown={(e) => e.key === "Enter" && openDetail(m.fullName)}
+                    >
+                      <div className="card-top">
+                        <div className="icon-frame">
+                          <ModIcon src={m.icon} name={m.name} />
+                        </div>
+                        <div className="card-title">
+                          <div className="mod-name">{m.name.replace(/_/g, " ")}</div>
+                          <div className="owner">by {m.owner}</div>
+                          <div className="card-tags">
+                            {m.pinned && <span className="badge">Pinned</span>}
+                            {m.deprecated && <span className="badge bad">Deprecated</span>}
+                            {m.categories
+                              .filter((c) => c !== "Mods")
+                              .slice(0, 2)
+                              .map((c) => (
+                                <span key={c} className="tag">
+                                  {c}
+                                </span>
+                              ))}
+                          </div>
+                        </div>
                       </div>
                       <div className="mod-desc">{m.description}</div>
-                    </div>
-                    <div className="mod-stats">
-                      <span>
-                        <Download /> {formatCount(m.totalDownloads)}
-                      </span>
-                      <span>
-                        <Star /> {m.rating}
-                      </span>
-                    </div>
-                    <div className="mod-actions" style={{ width: 112, justifyContent: "flex-end" }}>
-                      {have ? (
-                        have === m.latest ? (
-                          <span className="chip ok">
-                            <Check /> Installed
-                          </span>
+                      <div className="card-foot">
+                        <span title="Downloads">
+                          <Download /> {formatCount(m.totalDownloads)}
+                        </span>
+                        <span title="Rating">
+                          <Star /> {formatCount(m.rating)}
+                        </span>
+                        <span className="faint" title="Last updated">
+                          {timeAgo(m.dateUpdated)}
+                        </span>
+                        <span className="spacer" />
+                        {have ? (
+                          have === m.latest ? (
+                            <span className="chip ok">
+                              <Check /> Installed
+                            </span>
+                          ) : (
+                            <span className="chip warn">Update</span>
+                          )
                         ) : (
-                          <span className="chip warn">Update</span>
-                        )
-                      ) : (
-                        <button
-                          className="btn sm primary"
-                          disabled={install.isPending || !settings}
-                          onClick={(e) => {
-                            e.stopPropagation();
-                            setPending(m.fullName);
-                            install.mutate([m.fullName]);
-                          }}
-                        >
-                          {busy ? <Loader2 className="spin" /> : <Download />} Install
-                        </button>
-                      )}
+                          <button
+                            className="btn sm primary"
+                            disabled={install.isPending || !settings}
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              setPending(m.fullName);
+                              install.mutate([m.fullName]);
+                            }}
+                          >
+                            {busy ? <Loader2 className="spin" /> : <Download />} Install
+                          </button>
+                        )}
+                      </div>
                     </div>
-                  </div>
-                </div>
-              );
-            })}
+                  );
+                })}
+              </div>
+            ))}
           </div>
         )}
         {results.isFetchingNextPage && (

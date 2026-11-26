@@ -6,6 +6,7 @@ import { useGameStatus, useSettings } from "../hooks";
 import { useUi } from "../store";
 import { PageHead, Switch } from "../components/Chrome";
 import { confirmDialog } from "../components/Dialogs";
+import { RuneLoader } from "../components/RuneLoader";
 
 const keyOf = (e: { section: string; key: string }) => `${e.section}\u0000${e.key}`;
 const pretty = (s: string) => s.replace(/_/g, " ");
@@ -312,7 +313,7 @@ export function ModSettingsPage() {
       />
       {list.isLoading ? (
         <div className="empty">
-          <Loader2 className="spin" />
+          <RuneLoader />
         </div>
       ) : list.error ? (
         <div className="empty">

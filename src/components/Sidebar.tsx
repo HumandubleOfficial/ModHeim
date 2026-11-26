@@ -1,7 +1,9 @@
 import {
   Archive,
   Compass,
+  Globe2,
   ScrollText,
+  Sparkles,
   HeartPulse,
   Layers,
   Newspaper,
@@ -14,6 +16,25 @@ import {
 } from "lucide-react";
 import { useIndexInfo, useNews, useSettings, useUpdates } from "../hooks";
 import { type Page, useUi } from "../store";
+import * as N from "./NorseIcons";
+
+/** Hand-drawn icons used by the Norse theme. */
+const NORSE: Partial<Record<Page, (p: { className?: string }) => React.ReactElement>> = {
+  play: N.HornIcon,
+  news: N.ScrollIcon,
+  browse: N.MapIcon,
+  installed: N.ChestIcon,
+  modsettings: N.HammerIcon,
+  health: N.HeartRuneIcon,
+  log: N.QuillIcon,
+  profiles: N.ShieldIcon,
+  stats: N.TreeIcon,
+  servers: N.LonghouseIcon,
+  themes: N.RuneStoneIcon,
+  graphics: N.SunIcon,
+  backups: N.BarrelIcon,
+  settings: N.WheelIcon,
+};
 
 type NavItem = { id: Page; label: string; icon: typeof Play };
 
@@ -38,7 +59,9 @@ const GROUPS: { title?: string; items: NavItem[] }[] = [
   {
     title: "Game",
     items: [
+      { id: "stats", label: "Worlds & Play", icon: Globe2 },
       { id: "servers", label: "Servers", icon: Server },
+      { id: "graphics", label: "Graphics", icon: Sparkles },
       { id: "themes", label: "Game Themes", icon: Palette },
       { id: "backups", label: "Backups", icon: Archive },
     ],
@@ -53,13 +76,17 @@ export function Sidebar() {
   const gameUpdate = useNews().data?.updateAvailable ? 1 : undefined;
   const counts: Partial<Record<Page, number | undefined>> = { installed: updates.length, news: gameUpdate };
 
-  const item = ({ id, label, icon: Icon }: NavItem) => (
+  const norse = settings?.theme !== "modern";
+  const item = ({ id, label, icon: Lucide }: NavItem) => {
+    const Icon = (norse && NORSE[id]) || Lucide;
+    return (
     <button key={id} className={`nav-item${page === id ? " active" : ""}`} onClick={() => setPage(id)}>
       <Icon />
       {label}
       {!!counts[id] && <span className="count">{counts[id]}</span>}
     </button>
-  );
+    );
+  };
 
   return (
     <nav className="sidebar">

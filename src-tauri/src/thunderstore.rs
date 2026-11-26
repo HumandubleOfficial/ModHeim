@@ -679,8 +679,103 @@ pub async fn fetch_readme(client: &reqwest::Client, full_name: &str, version: &s
     Ok(r.markdown)
 }
 
+#[derive(Deserialize)]
+struct ChangelogResp {
+    markdown: Option<String>,
+}
+
+/// The package's CHANGELOG.md as of `version`; None when it doesn't ship one.
+pub async fn fetch_changelog(client: &reqwest::Client, full_name: &str, version: &str) -> Result<Option<String>> {
+    let (owner, name) = full_name
+        .split_once('-')
+        .ok_or_else(|| AppError::msg(format!("Bad package name {full_name}")))?;
+    let url = format!("https://thunderstore.io/api/experimental/package/{owner}/{name}/{version}/changelog/");
+    let resp = client.get(url).send().await?;
+    if resp.status() == reqwest::StatusCode::NOT_FOUND {
+        return Ok(None);
+    }
+    let r: ChangelogResp = resp.error_for_status()?.json().await?;
+    Ok(r.markdown.filter(|m| !m.trim().is_empty()))
+}
+
+/// A version number in a changelog heading ("## Version 2.30.2", "# 1.4.0 (2024-05-01)", "v0.9").
+fn heading_version(line: &str) -> Option<String> {
+    let t = line.trim_start_matches('#').trim();
+    t.split(|c: char| !(c.is_ascii_digit() || c == '.'))
+        .find(|w| w.contains('.') && w.split('.').all(|p| !p.is_empty() && p.chars().all(|c| c.is_ascii_digit())))
+        .map(str::to_string)
+}
+
+#[derive(Debug, Clone, serde::Serialize, PartialEq)]
+pub struct ChangelogSection {
+    pub version: String,
+    pub markdown: String,
+}
+
+/// The changelog sections for versions newer than `from`, up to and including `to`.
+/// Empty when the changelog isn't split by version.
+pub fn changelog_between(markdown: &str, from: &str, to: &str) -> Vec<ChangelogSection> {
+    let (lo, hi) = (version_key(from), version_key(to));
+    let mut out: Vec<ChangelogSection> = Vec::new();
+    let mut current: Option<ChangelogSection> = None;
+    let mut level = 0;
+    for line in markdown.lines() {
+        let hashes = line.chars().take_while(|&c| c == '#').count();
+        if hashes > 0 && (level == 0 || hashes <= level) {
+            if let Some(v) = heading_version(line) {
+                level = hashes;
+                if let Some(c) = current.take() {
+                    out.push(c);
+                }
+                let k = version_key(&v);
+                current = (k > lo && k <= hi).then(|| ChangelogSection { version: v, markdown: String::new() });
+                continue;
+            }
+        }
+        if let Some(c) = current.as_mut() {
+            c.markdown.push_str(line);
+            c.markdown.push('\n');
+        }
+    }
+    if let Some(c) = current {
+        out.push(c);
+    }
+    for c in &mut out {
+        c.markdown = c.markdown.trim().to_string();
+    }
+    out
+}
+
 #[cfg(test)]
 pub mod tests {
+    #[test]
+    fn changelog_sections_between_versions() {
+        let md = "# Changelog
+
+## Version 2.30.2
+* fix A
+
+## Version 2.30.1
+* add B
+### Details
+more
+
+## Version 2.30.0
+* old
+";
+        let s = super::changelog_between(md, "2.30.0", "2.30.2");
+        assert_eq!(s.iter().map(|c| c.version.as_str()).collect::<Vec<_>>(), ["2.30.2", "2.30.1"]);
+        assert_eq!(s[1].markdown, "* add B
+### Details
+more");
+        let s = super::changelog_between("- v1.2.0 (May)
+  - thing
+# 1.3.0
+new", "1.2.0", "1.3.0");
+        assert_eq!(s.len(), 1);
+        assert!(super::changelog_between("just text", "1.0.0", "2.0.0").is_empty());
+    }
+
     use super::*;
 
     pub fn pkg(full: &str, versions: &[&str], deps: &[&str]) -> Package {

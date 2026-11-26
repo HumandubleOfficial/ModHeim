@@ -19,6 +19,10 @@ const settings = {
   background: null,
   backdrop: (localStorage.getItem("mock.backdrop") as string) || "aurora",
   launchGuard: true,
+  autoUpdate: false,
+  trayWhilePlaying: true,
+  discordStatus: false,
+  discordAppId: "",
   backupBeforeLaunch: true,
   backupKeep: 10,
   sounds: true,
@@ -219,6 +223,39 @@ function handle(cmd: string, args: Args): unknown {
       return { name: (args?.name as string) || "Modpack", installed: 23, warnings: [] };
     case "set_active_profile":
       return settings;
+    case "get_graphics":
+      return { installed: false, pluginEnabled: false, settings: null, lastReport: null };
+    case "apply_graphics":
+      return { installed: true, pluginEnabled: true, settings: args?.settings, lastReport: null };
+    case "profile_conflicts":
+      return {
+        modsScanned: 21, methodsPatched: 655,
+        patches: [
+          { target: "InventoryGrid.OnLeftDown", level: "likely", reason: "2 mods can each take over this game method; when both do, one mod's change is lost", mods: [{ name: "Quick Stack Store", fullName: "a-QS", kinds: ["prefix"], canSkip: true }, { name: "QoL Options", fullName: "b-QoL", kinds: ["prefix"], canSkip: true }] },
+          { target: "Container.RPC_StackResponse", level: "likely", reason: "2 mods can each take over this game method; when both do, one mod's change is lost", mods: [{ name: "Quick Stack Store", fullName: "a-QS", kinds: ["prefix"], canSkip: true }, { name: "QoL Options", fullName: "b-QoL", kinds: ["prefix"], canSkip: true }] },
+          { target: "VisEquipment.UpdateEquipmentVisuals", level: "possible", reason: "Two mods rewrite the code of this method; they usually cope, but this is a common source of odd bugs", mods: [{ name: "Jotunn", fullName: "c-J", kinds: ["prefix"], canSkip: false }, { name: "Valheim Performance Optimizations", fullName: "d-V", kinds: ["prefix", "transpiler"], canSkip: false }] },
+        ],
+        hotkeys: [
+          { shortcut: "F8", game: null, uses: [{ owner: "PlantEasily", file: "advize.PlantEasily.cfg", section: "Controls", key: "EnableModKey", value: "F8" }, { owner: "LeanHeim", file: "leanheim.performance.cfg", section: "General", key: "ToggleKey", value: "F8" }] },
+          { shortcut: "E", game: "Use", uses: [{ owner: "Some Mod", file: "x.cfg", section: "Keys", key: "OpenKey", value: "E" }] },
+        ],
+      };
+    case "mod_changelog":
+      return { sections: [{ version: "2.30.2", markdown: "* Fixed Deep North assets overriding vanilla assets\n* Fixed legacy build menu support" }], full: null };
+    case "play_stats":
+      return {
+        totalSeconds: 151200, weekSeconds: 21600, sessions: 41, crashes: 3,
+        days: [0, 3600, 7200, 0, 0, 5400, 10800, 0, 1800, 0, 9000, 3600, 0, 7200],
+        worlds: [
+          { name: "Ashlands Outpost", seed: "Q7tHn2XkLm", bytes: 962587, modified: now / 1000 - 86400 * 4, cloud: false },
+          { name: "TheWorld", seed: null, bytes: 4521996, modified: now / 1000 - 86400 * 5, cloud: true },
+        ],
+        byProfile: [{ profile: "Mods", sessions: 33, seconds: 130000, crashes: 3 }, { profile: null, sessions: 8, seconds: 21200, crashes: 0 }],
+        recent: [
+          { start: now / 1000 - 7200, end: now / 1000 - 3600, profile: "Mods", errors: 1, crashed: false },
+          { start: now / 1000 - 86400 * 4, end: now / 1000 - 86400 * 4 + 900, profile: "Mods", errors: 435, crashed: true },
+        ],
+      };
     case "launch_check":
       return {
         profile: settings.activeProfile, gameVersion: "1.0.30.0",
@@ -244,8 +281,8 @@ function handle(cmd: string, args: Args): unknown {
       return {
         folder: "C:\Users\you\AppData\Roaming\ModHeim\backups",
         backups: [
-          { file: "Valheim saves 2026-11-25 18-12-03.zip", created: iso(0.1), reason: "Before playing Mods", bytes: 9_300_000, files: 131, worlds: ["MeandDadworld", "TheWorld"] },
-          { file: "Valheim saves 2026-11-23 20-40-10.zip", created: iso(2), reason: "Backed up by you", bytes: 9_100_000, files: 128, worlds: ["MeandDadworld", "TheWorld"] },
+          { file: "Valheim saves 2026-11-25 18-12-03.zip", created: iso(0.1), reason: "Before playing Mods", bytes: 9_300_000, files: 131, worlds: ["Ashlands Outpost", "TheWorld"] },
+          { file: "Valheim saves 2026-11-23 20-40-10.zip", created: iso(2), reason: "Backed up by you", bytes: 9_100_000, files: 128, worlds: ["Ashlands Outpost", "TheWorld"] },
         ],
         sources: [
           { label: "worlds_local", path: "C:\Users\you\AppData\LocalLow\IronGate\Valheim\worlds_local", files: 21, bytes: 1_050_000 },

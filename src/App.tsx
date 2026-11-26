@@ -26,6 +26,8 @@ const ServersPage = named(() => import("./pages/Servers"), "ServersPage");
 const ModSettingsPage = named(() => import("./pages/ModSettings"), "ModSettingsPage");
 const HealthPage = named(() => import("./pages/Health"), "HealthPage");
 const GameLogPage = named(() => import("./pages/GameLog"), "GameLogPage");
+const GraphicsPage = named(() => import("./pages/Graphics"), "GraphicsPage");
+const StatsPage = named(() => import("./pages/Stats"), "StatsPage");
 const BackupsPage = named(() => import("./pages/Backups"), "BackupsPage");
 const SettingsPage = named(() => import("./pages/Settings"), "SettingsPage");
 
@@ -82,7 +84,10 @@ export default function App() {
       listen<Progress>("progress", (e) => setProgress(e.payload.done ? null : e.payload)),
       listen<boolean>("game-running", (e) => {
         qc.invalidateQueries({ queryKey: keys.game });
-        if (!e.payload) void afterGameClosed();
+        if (!e.payload) {
+          void afterGameClosed();
+          qc.invalidateQueries({ queryKey: ["stats"] });
+        }
       }),
       listen<ErrorStorm>("error-storm", (e) => {
         useUi.getState().addStorm(e.payload);
@@ -159,6 +164,8 @@ export default function App() {
           {page === "health" && <HealthPage />}
           {page === "log" && <GameLogPage />}
           {page === "backups" && <BackupsPage />}
+          {page === "stats" && <StatsPage />}
+          {page === "graphics" && <GraphicsPage />}
           {page === "settings" && <SettingsPage />}
           </Suspense>
         </main>

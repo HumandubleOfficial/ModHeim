@@ -1,10 +1,11 @@
 import { useMemo, useState } from "react";
 import { ArrowUpCircle, FileText, FolderOpen, Search, Settings2, Trash2 } from "lucide-react";
-import { api, BEPINEX_PACK, type InstalledMod } from "../api";
+import { api, BEPINEX_PACK, type InstalledMod, type UpdateInfo } from "../api";
 import { useAction, useIndexInfo, useProfile, useSettings, useUpdates } from "../hooks";
 import { useUi } from "../store";
 import { ModIcon, PageHead, Switch } from "../components/Chrome";
 import { confirmDialog } from "../components/Dialogs";
+import { UpdateReview } from "../components/UpdateReview";
 
 const depName = (d: string) => d.split("-").slice(0, -1).join("-");
 
@@ -17,6 +18,7 @@ export function InstalledPage() {
   const { openDetail, setPage } = useUi();
   const [filter, setFilter] = useState("");
   const [show, setShow] = useState<"all" | "on" | "off" | "updates">("all");
+  const [review, setReview] = useState<UpdateInfo[] | null>(null);
 
   const updateMap = useMemo(() => new Map(updates.map((u) => [u.fullName, u.latest])), [updates]);
   /** fullName -> names of installed mods that depend on it */
@@ -88,6 +90,7 @@ export function InstalledPage() {
 
   return (
     <div className="page fill">
+      {review && <UpdateReview items={review} onClose={() => setReview(null)} onUpdate={(names) => update.mutate([names])} />}
       <PageHead
         title="Installed"
         sub={
@@ -113,7 +116,7 @@ export function InstalledPage() {
               <button
                 className="btn primary"
                 disabled={update.isPending}
-                onClick={() => update.mutate([updates.map((u) => u.fullName)])}
+                onClick={() => setReview(updates)}
               >
                 <ArrowUpCircle /> Update all ({updates.length})
               </button>
@@ -159,7 +162,7 @@ export function InstalledPage() {
           return (
             <div
               key={m.fullName}
-              className={`mod-row${m.enabled ? "" : " disabled"}`}
+              className={`mod-row plaque${m.enabled ? "" : " disabled"}`}
               onClick={() => (m.fullName.startsWith("ModHeim-") ? setPage("themes") : openDetail(m.fullName))}
             >
               <Switch
@@ -168,7 +171,9 @@ export function InstalledPage() {
                 disabled={isPack || toggle.isPending}
                 onChange={(v) => onToggle(m, v)}
               />
-              <ModIcon src={m.icon} name={m.name} />
+              <div className="icon-frame">
+                <ModIcon src={m.icon} name={m.name} />
+              </div>
               <div className="mod-main">
                 <div className="mod-name">
                   {m.name.replace(/_/g, " ")}
@@ -179,7 +184,18 @@ export function InstalledPage() {
               </div>
               <div className="mod-stats">
                 <span className="mono">v{m.version}</span>
-                {latest && <span className="badge warn">v{latest} available</span>}
+                {latest && (
+                  <button
+                    className="badge warn as-button"
+                    title="See what changed"
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      setReview(updates.filter((u) => u.fullName === m.fullName));
+                    }}
+                  >
+                    v{latest} · what's new
+                  </button>
+                )}
               </div>
               <div className="mod-actions">
                 {latest && (
@@ -188,7 +204,7 @@ export function InstalledPage() {
                     disabled={update.isPending}
                     onClick={(e) => {
                       e.stopPropagation();
-                      update.mutate([[m.fullName]]);
+                      setReview(updates.filter((u) => u.fullName === m.fullName));
                     }}
                   >
                     <ArrowUpCircle /> Update

@@ -1,11 +1,14 @@
 mod backups;
 mod commands;
 mod compat;
+mod discord;
+mod conflicts;
 mod doorstop;
 mod error;
 mod external;
 mod features;
 mod game;
+mod game_graphics;
 mod game_theme;
 mod guard;
 mod health;
@@ -17,6 +20,7 @@ mod profiles;
 mod serverquery;
 mod settings;
 mod snapshots;
+mod stats;
 mod thunderstore;
 
 use commands::*;
@@ -45,6 +49,7 @@ pub fn run() {
         .plugin(tauri_plugin_process::init())
         .manage(state)
         .setup(|app| {
+            build_tray(app)?;
             spawn_game_watcher(app.handle().clone());
             // index the game's DLLs in the background so the first launch check is instant
             if let Some(g) = settings::Settings::load().game {
@@ -106,6 +111,11 @@ pub fn run() {
             list_external_profiles,
             import_external_profile,
             launch_check,
+            profile_conflicts,
+            mod_changelog,
+            play_stats,
+            get_graphics,
+            apply_graphics,
             read_log,
             crash_report,
             save_text_file,
@@ -119,4 +129,38 @@ pub fn run() {
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");
+}
+
+fn show_main(app: &tauri::AppHandle) {
+    use tauri::Manager;
+    if let Some(w) = app.get_webview_window("main") {
+        let _ = w.show();
+        let _ = w.unminimize();
+        let _ = w.set_focus();
+    }
+}
+
+/// Tray icon: click to open ModHeim, right-click for Open / Quit.
+fn build_tray(app: &tauri::App) -> tauri::Result<()> {
+    use tauri::menu::{Menu, MenuItem};
+    use tauri::tray::{MouseButton, MouseButtonState, TrayIconBuilder, TrayIconEvent};
+    let open = MenuItem::with_id(app, "open", "Open ModHeim", true, None::<&str>)?;
+    let quit = MenuItem::with_id(app, "quit", "Quit ModHeim", true, None::<&str>)?;
+    let menu = Menu::with_items(app, &[&open, &quit])?;
+    let mut tray = TrayIconBuilder::with_id("main").tooltip("ModHeim").menu(&menu).show_menu_on_left_click(false);
+    if let Some(icon) = app.default_window_icon() {
+        tray = tray.icon(icon.clone());
+    }
+    tray.on_menu_event(|app, e| match e.id.as_ref() {
+        "open" => show_main(app),
+        "quit" => app.exit(0),
+        _ => {}
+    })
+    .on_tray_icon_event(|tray, e| {
+        if let TrayIconEvent::Click { button: MouseButton::Left, button_state: MouseButtonState::Up, .. } = e {
+            show_main(tray.app_handle());
+        }
+    })
+    .build(app)?;
+    Ok(())
 }

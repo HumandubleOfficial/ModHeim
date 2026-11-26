@@ -33,6 +33,10 @@ export interface Settings {
   background: string | null;
   backdrop: Backdrop;
   launchGuard: boolean;
+  autoUpdate: boolean;
+  trayWhilePlaying: boolean;
+  discordStatus: boolean;
+  discordAppId: string;
   backupBeforeLaunch: boolean;
   backupKeep: number;
   sounds: boolean;
@@ -45,7 +49,7 @@ export type Prefs = Partial<
   Pick<
     Settings,
     | "theme" | "launchMethod" | "extraArgs" | "showNsfw" | "showDeprecated" | "backdrop"
-    | "launchGuard" | "backupBeforeLaunch" | "backupKeep" | "sounds" | "ambience" | "volume"
+    | "launchGuard" | "autoUpdate" | "trayWhilePlaying" | "discordStatus" | "discordAppId" | "backupBeforeLaunch" | "backupKeep" | "sounds" | "ambience" | "volume"
   >
 >;
 
@@ -347,6 +351,101 @@ export interface BackupInfo {
   folder: string;
 }
 
+export type PatchKind = "prefix" | "postfix" | "transpiler" | "finalizer";
+
+export interface PatchConflict {
+  target: string;
+  level: "likely" | "possible";
+  reason: string;
+  mods: { name: string; fullName: string; kinds: PatchKind[]; canSkip: boolean }[];
+}
+
+export interface HotkeyConflict {
+  shortcut: string;
+  game: string | null;
+  uses: { owner: string; file: string; section: string; key: string; value: string }[];
+}
+
+export interface Conflicts {
+  patches: PatchConflict[];
+  hotkeys: HotkeyConflict[];
+  modsScanned: number;
+  methodsPatched: number;
+}
+
+export interface Changelog {
+  sections: { version: string; markdown: string }[];
+  full: string | null;
+}
+
+export interface Session {
+  start: number;
+  end: number;
+  profile: string | null;
+  errors: number;
+  crashed: boolean;
+}
+
+export interface WorldInfo {
+  name: string;
+  seed: string | null;
+  bytes: number;
+  modified: number;
+  cloud: boolean;
+}
+
+export interface PlayStats {
+  worlds: WorldInfo[];
+  recent: Session[];
+  byProfile: { profile: string | null; sessions: number; seconds: number; crashes: number }[];
+  totalSeconds: number;
+  weekSeconds: number;
+  sessions: number;
+  crashes: number;
+  days: number[];
+}
+
+export interface Graphics {
+  enabled: boolean;
+  preset: string;
+  reflections: number;
+  reflectionProbe: boolean;
+  probeResolution: number;
+  fullTextures: boolean;
+  anisotropic: number;
+  lodBias: number;
+  shadowDistance: number;
+  shadowQuality: number;
+  ambientOcclusion: number;
+  antiAliasing: number;
+  sharpen: number;
+  tonemapping: string;
+  exposure: number;
+  contrast: number;
+  saturation: number;
+  temperature: number;
+  bloom: number;
+  vignette: number;
+  autoExposure: boolean;
+  grassDistance: number;
+  /** colour-wheel look: Off, Cinematic, Golden, Nordic, Moody */
+  grade: string;
+  gradeStrength: number;
+  clarity: number;
+  /** 0 game, 1 strong, 2 epic */
+  godRays: number;
+  deband: boolean;
+  filmGrain: number;
+  compareKey: string;
+}
+
+export interface GraphicsState {
+  installed: boolean;
+  pluginEnabled: boolean;
+  settings: Graphics | null;
+  lastReport: string | null;
+}
+
 export const BEPINEX_PACK = "denikson-BepInExPack_Valheim";
 
 export const api = {
@@ -410,6 +509,12 @@ export const api = {
   importExternalProfile: (path: string, name?: string) =>
     invoke<ImportResult>("import_external_profile", { path, name: name ?? null }),
 
+  modChangelog: (fullName: string, from: string, to: string) =>
+    invoke<Changelog>("mod_changelog", { fullName, from, to }),
+  getGraphics: (profile: string) => invoke<GraphicsState>("get_graphics", { profile }),
+  applyGraphics: (profile: string, settings: Graphics) => invoke<GraphicsState>("apply_graphics", { profile, settings }),
+  playStats: () => invoke<PlayStats>("play_stats"),
+  profileConflicts: (profile: string) => invoke<Conflicts>("profile_conflicts", { profile }),
   launchCheck: (profile?: string) => invoke<LaunchCheck>("launch_check", { profile: profile ?? null }),
   readLog: (profile: string, from: number) => invoke<LogChunk>("read_log", { profile, from }),
   crashReport: (profile: string) => invoke<string>("crash_report", { profile }),

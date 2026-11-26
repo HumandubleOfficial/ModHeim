@@ -12,6 +12,8 @@ let master: GainNode | null = null;
 let noise: AudioBuffer | null = null;
 let wantAmbience = false;
 let fire: { stop: () => void } | null = null;
+let wantRain = false;
+let rain: { stop: () => void } | null = null;
 
 function audio(): AudioContext | null {
   if (!ctx) {
@@ -201,13 +203,52 @@ function startFire(c: AudioContext) {
   };
 }
 
+/** Soft rain: high, gently swelling noise. */
+function startRain(c: AudioContext) {
+  const bed = c.createGain();
+  bed.gain.setValueAtTime(0.0001, c.currentTime);
+  bed.gain.exponentialRampToValueAtTime(0.05, c.currentTime + 3);
+  bed.connect(master!);
+  const n = noiseSource(c, true);
+  const hp = c.createBiquadFilter();
+  hp.type = "highpass";
+  hp.frequency.value = 900;
+  const lp = c.createBiquadFilter();
+  lp.type = "lowpass";
+  lp.frequency.value = 7000;
+  n.connect(hp).connect(lp).connect(bed);
+  n.start();
+  return {
+    stop() {
+      const t = c.currentTime;
+      bed.gain.cancelScheduledValues(t);
+      bed.gain.setValueAtTime(Math.max(0.0001, bed.gain.value), t);
+      bed.gain.exponentialRampToValueAtTime(0.0001, t + 1);
+      n.stop(t + 1.1);
+    },
+  };
+}
+
 function syncAmbience() {
   const on = wantAmbience && cfg.ambience && !document.hidden;
-  if (on && !fire && ctx && ctx.state === "running") fire = startFire(ctx);
+  const running = !!ctx && ctx.state === "running";
+  if (on && !fire && running) fire = startFire(ctx!);
   if (!on && fire) {
     fire.stop();
     fire = null;
   }
+  const rainOn = on && wantRain;
+  if (rainOn && !rain && running) rain = startRain(ctx!);
+  if (!rainOn && rain) {
+    rain.stop();
+    rain = null;
+  }
+}
+
+/** Rain sound under the campfire while the Play scene shows rain. */
+export function setRain(on: boolean) {
+  wantRain = on;
+  syncAmbience();
 }
 
 /** The campfire plays while this is on (the Play screen) and the setting allows it. */

@@ -398,3 +398,69 @@ pub async fn create_backup(app: AppHandle, state: State<'_, AppState>) -> Result
 pub fn delete_backup(file: String) -> Result<()> {
     crate::backups::delete(&file)
 }
+
+// ================================================================ conflicts
+
+/// Mods that cancel each other's changes to the same game code, and clashing hotkeys.
+#[tauri::command]
+pub async fn profile_conflicts(profile: String) -> Result<crate::conflicts::Conflicts> {
+    tokio::task::spawn_blocking(move || crate::conflicts::check(&profile))
+        .await
+        .map_err(|e| AppError::msg(e.to_string()))?
+}
+
+// ================================================================ changelogs
+
+#[derive(serde::Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct Changelog {
+    /// What changed after `from`, newest first.
+    pub sections: Vec<crate::thunderstore::ChangelogSection>,
+    /// The whole changelog when it isn't split by version (or None when the mod has none).
+    pub full: Option<String>,
+}
+
+#[tauri::command]
+pub async fn mod_changelog(state: State<'_, AppState>, full_name: String, from: String, to: String) -> Result<Changelog> {
+    let md = crate::thunderstore::fetch_changelog(&state.http, &full_name, &to).await?;
+    Ok(match md {
+        None => Changelog { sections: Vec::new(), full: None },
+        Some(md) => {
+            let sections = crate::thunderstore::changelog_between(&md, &from, &to);
+            let full = sections.is_empty().then(|| md.chars().take(20_000).collect());
+            Changelog { sections, full }
+        }
+    })
+}
+
+// ================================================================ play stats
+
+#[tauri::command]
+pub async fn play_stats() -> Result<crate::stats::PlayStats> {
+    tokio::task::spawn_blocking(crate::stats::play_stats).await.map_err(|e| AppError::msg(e.to_string()))
+}
+
+// ================================================================ in-game graphics
+
+#[tauri::command]
+pub fn get_graphics(profile: String) -> Result<crate::game_graphics::GraphicsState> {
+    crate::game_graphics::state(&profile)
+}
+
+/// Install ModHeim's graphics plugin into the profile if needed and write its settings.
+/// If Valheim is running with this profile, the plugin picks the change up live.
+#[tauri::command]
+pub async fn apply_graphics(
+    state: State<'_, AppState>,
+    profile: String,
+    settings: crate::game_graphics::Graphics,
+) -> Result<crate::game_graphics::GraphicsState> {
+    let _lock = state.ops.lock().await;
+    crate::game_theme::require_bepinex(&profile)?;
+    if settings.enabled {
+        let mut p = profiles::load(&profile)?;
+        crate::game_graphics::ensure_plugin(&mut p, state.running.load(std::sync::atomic::Ordering::Relaxed))?;
+    }
+    crate::game_graphics::write_settings(&profile, &settings)?;
+    crate::game_graphics::state(&profile)
+}

@@ -71,6 +71,13 @@ pub struct Settings {
     pub backdrop: String,
     /// Check mods against the game version before a modded launch.
     pub launch_guard: bool,
+    /// Hide ModHeim in the system tray while the game runs.
+    pub tray_while_playing: bool,
+    /// Show the session as Discord activity (needs an Application ID).
+    pub discord_status: bool,
+    pub discord_app_id: String,
+    /// Update the profile's mods before each modded launch (a restore point is taken first).
+    pub auto_update: bool,
     /// Back up worlds and characters before modded launches (only when they changed).
     pub backup_before_launch: bool,
     pub backup_keep: u32,
@@ -94,6 +101,10 @@ impl Default for Settings {
             background: None,
             backdrop: "aurora".into(),
             launch_guard: true,
+            tray_while_playing: true,
+            discord_status: false,
+            discord_app_id: String::new(),
+            auto_update: false,
             backup_before_launch: true,
             backup_keep: 10,
             sounds: true,

@@ -82,6 +82,7 @@ export function useInvalidate() {
     qc.invalidateQueries({ queryKey: ["gameTheme"] });
     qc.invalidateQueries({ queryKey: ["health"] });
     qc.invalidateQueries({ queryKey: ["configs"] });
+    qc.invalidateQueries({ queryKey: ["conflicts"] });
   };
 }
 

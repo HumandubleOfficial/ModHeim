@@ -47,6 +47,8 @@ export function SettingsPage() {
   const clear = useAction(api.clearDownloadCache, { success: (n) => `Freed ${formatBytes(n)}` });
   const [args, setArgs] = useState("");
   const [vol, setVol] = useState<number | null>(null);
+  const [discordId, setDiscordId] = useState("");
+  useEffect(() => setDiscordId(settings?.discordAppId ?? ""), [settings?.discordAppId]);
   useEffect(() => setArgs(settings?.extraArgs ?? ""), [settings?.extraArgs]);
 
   if (!settings) return null;
@@ -170,6 +172,16 @@ export function SettingsPage() {
         </div>
         <div className="setting-row">
           <div className="text">
+            <div className="title">Update mods before playing</div>
+            <div className="desc">
+              Installs mod updates when you press Play modded. A restore point is saved first, so a bad update is one
+              click to undo. Off by default: review changelogs on the Installed page instead.
+            </div>
+          </div>
+          <Switch label="Update mods before playing" on={settings.autoUpdate} onChange={(v) => prefs.mutate([{ autoUpdate: v }])} />
+        </div>
+        <div className="setting-row">
+          <div className="text">
             <div className="title">Back up worlds before modded play</div>
             <div className="desc">
               Copies your worlds and characters into ModHeim's backups folder first, only when they changed since the
@@ -210,6 +222,56 @@ export function SettingsPage() {
           </div>
         </div>
         <BackgroundRow current={settings.background} />
+      </div>
+
+      <h2 className="section">While you play</h2>
+      <div className="panel pad">
+        <div className="setting-row">
+          <div className="text">
+            <div className="title">Hide in the tray</div>
+            <div className="desc">
+              ModHeim tucks itself into the system tray while Valheim runs and comes back when you close the game. Click
+              the tray icon to open it any time.
+            </div>
+          </div>
+          <Switch label="Hide in the tray" on={settings.trayWhilePlaying} onChange={(v) => prefs.mutate([{ trayWhilePlaying: v }])} />
+        </div>
+        <div className="setting-row">
+          <div className="text">
+            <div className="title">Discord status</div>
+            <div className="desc">
+              Shows "Modded · {settings.activeProfile} · {"<"}n{">"} mods" and your play time in Discord. Discord needs an
+              Application ID for this: create a free application named "Valheim" at{" "}
+              <button className="link-btn" onClick={() => api.openUrl("https://discord.com/developers/applications")}>
+                discord.com/developers
+              </button>{" "}
+              and paste its ID here.
+            </div>
+          </div>
+          <Switch
+            label="Discord status"
+            on={settings.discordStatus}
+            disabled={!settings.discordAppId}
+            onChange={(v) => prefs.mutate([{ discordStatus: v }])}
+          />
+        </div>
+        <div className="setting-row">
+          <div className="text">
+            <div className="title">Discord Application ID</div>
+          </div>
+          <input
+            className="input mono"
+            style={{ width: 260 }}
+            value={discordId}
+            inputMode="numeric"
+            placeholder="e.g. 1312345678901234567"
+            onChange={(e) => setDiscordId(e.target.value.replace(/[^0-9]/g, ""))}
+            onBlur={() =>
+              discordId !== settings.discordAppId &&
+              prefs.mutate([{ discordAppId: discordId, ...(discordId ? {} : { discordStatus: false }) }])
+            }
+          />
+        </div>
       </div>
 
       <h2 className="section">Sound</h2>

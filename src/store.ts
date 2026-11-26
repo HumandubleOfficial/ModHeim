@@ -1,7 +1,7 @@
 import { create } from "zustand";
 import type { ErrorStorm, Progress } from "./api";
 
-export type Page = "play" | "news" | "themes" | "browse" | "installed" | "profiles" | "servers" | "settings" | "modsettings" | "health" | "log" | "backups";
+export type Page = "play" | "news" | "themes" | "browse" | "installed" | "profiles" | "servers" | "settings" | "modsettings" | "health" | "log" | "backups" | "stats" | "graphics";
 
 export interface Toast {
   id: number;

@@ -1,4 +1,4 @@
-//! Version compatibility: which game types and members each mod DLL uses, checked against the
+﻿//! Version compatibility: which game types and members each mod DLL uses, checked against the
 //! installed game's own DLLs. A mod built for an older Valheim that touches something the
 //! current version removed crashes with MissingFieldException / MissingMethodException /
 //! TypeLoadException, sometimes every frame (the "game not responding" kind of break).
@@ -307,6 +307,351 @@ impl<'a> Metadata<'a> {
     }
 }
 
+// ------------------------------------------------------------ Harmony patches a mod declares
+
+/// What kind of Harmony patch a method is.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub enum PatchKind {
+    Prefix,
+    Postfix,
+    Transpiler,
+    Finalizer,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Hash)]
+pub struct Patch {
+    /// "Player.Update", "Player.get_Stamina", "Ship..ctor"
+    pub target: String,
+    pub kind: PatchKind,
+    /// A prefix returning bool: it can skip the game's own method.
+    pub can_skip: bool,
+}
+
+/// Compressed unsigned integer (II.23.2).
+fn cu(b: &[u8], p: &mut usize) -> Option<u32> {
+    let b0 = *b.get(*p)? as u32;
+    if b0 & 0x80 == 0 {
+        *p += 1;
+        Some(b0)
+    } else if b0 & 0xC0 == 0x80 {
+        let v = ((b0 & 0x3F) << 8) | *b.get(*p + 1)? as u32;
+        *p += 2;
+        Some(v)
+    } else {
+        let v = ((b0 & 0x1F) << 24) | (*b.get(*p + 1)? as u32) << 16 | (*b.get(*p + 2)? as u32) << 8 | *b.get(*p + 3)? as u32;
+        *p += 4;
+        Some(v)
+    }
+}
+
+#[derive(Clone, Copy, PartialEq)]
+enum Param {
+    Str,
+    Type,
+    I4,
+    Bool,
+    Arr(ArrElem),
+}
+#[derive(Clone, Copy, PartialEq)]
+enum ArrElem {
+    Str,
+    Type,
+    I4,
+}
+
+#[derive(Debug, Clone, PartialEq)]
+enum Arg {
+    Str(Option<String>),
+    Type(Option<String>),
+    I4(i32),
+    Other,
+}
+
+impl<'a> Metadata<'a> {
+    fn blob(&self, idx: u32) -> Option<&'a [u8]> {
+        let mut p = self.blob + idx as usize;
+        let len = cu(self.r.b, &mut p)? as usize;
+        self.r.b.get(p..p + len)
+    }
+
+    fn type_ref_name(&self, table: usize, row: u32) -> String {
+        let (t, name_col, ns_col) = match table {
+            0x01 => (0x01, 1, 2),
+            0x02 => (0x02, 1, 2),
+            _ => return String::new(),
+        };
+        let name = self.string(self.get(t, row, name_col));
+        let ns = self.string(self.get(t, row, ns_col));
+        if ns.is_empty() { name } else { format!("{ns}.{name}") }
+    }
+
+    /// Parameter types of an attribute constructor's signature.
+    fn ctor_params(&self, sig: &[u8]) -> Option<Vec<Param>> {
+        let mut p = 1; // calling convention
+        let n = cu(sig, &mut p)?;
+        p += 1; // return type: void
+        let mut out = Vec::new();
+        for _ in 0..n {
+            out.push(self.sig_param(sig, &mut p)?);
+        }
+        Some(out)
+    }
+
+    fn sig_param(&self, sig: &[u8], p: &mut usize) -> Option<Param> {
+        let et = *sig.get(*p)?;
+        *p += 1;
+        Some(match et {
+            0x0E => Param::Str,
+            0x08 => Param::I4,
+            0x02 => Param::Bool,
+            // a class in an attribute constructor is System.Type
+            0x12 => {
+                cu(sig, p)?;
+                Param::Type
+            }
+            // value type: an enum (MethodType / ArgumentType), int-sized
+            0x11 => {
+                cu(sig, p)?;
+                Param::I4
+            }
+            0x1D => match self.sig_param(sig, p)? {
+                Param::Str => Param::Arr(ArrElem::Str),
+                Param::Type => Param::Arr(ArrElem::Type),
+                Param::I4 => Param::Arr(ArrElem::I4),
+                _ => return None,
+            },
+            _ => return None,
+        })
+    }
+}
+
+fn ser_string(b: &[u8], p: &mut usize) -> Option<Option<String>> {
+    if *b.get(*p)? == 0xFF {
+        *p += 1;
+        return Some(None);
+    }
+    let len = cu(b, p)? as usize;
+    let s = String::from_utf8_lossy(b.get(*p..*p + len)?).into_owned();
+    *p += len;
+    Some(Some(s))
+}
+
+/// Decode a custom attribute's fixed arguments (II.23.3).
+fn attr_args(params: &[Param], value: &[u8]) -> Option<Vec<Arg>> {
+    if value.get(0..2)? != [1, 0] {
+        return None;
+    }
+    let mut p = 2;
+    let mut out = Vec::new();
+    for prm in params {
+        match prm {
+            Param::Str => out.push(Arg::Str(ser_string(value, &mut p)?)),
+            Param::Type => out.push(Arg::Type(ser_string(value, &mut p)?)),
+            Param::I4 => {
+                out.push(Arg::I4(i32::from_le_bytes(value.get(p..p + 4)?.try_into().ok()?)));
+                p += 4;
+            }
+            Param::Bool => {
+                p += 1;
+                out.push(Arg::Other);
+            }
+            Param::Arr(e) => {
+                let n = u32::from_le_bytes(value.get(p..p + 4)?.try_into().ok()?);
+                p += 4;
+                if n != u32::MAX {
+                    for _ in 0..n {
+                        match e {
+                            ArrElem::Str | ArrElem::Type => {
+                                ser_string(value, &mut p)?;
+                            }
+                            ArrElem::I4 => p += 4,
+                        }
+                    }
+                }
+                out.push(Arg::Other);
+            }
+        }
+    }
+    Some(out)
+}
+
+/// The patch target a [HarmonyPatch(...)] gives, merged class-level then method-level.
+#[derive(Default, Clone)]
+struct Target {
+    ty: Option<String>,
+    method: Option<String>,
+    method_type: Option<i32>,
+}
+
+impl Target {
+    fn from_args(args: &[Arg]) -> Target {
+        let mut t = Target::default();
+        let types: Vec<&String> = args.iter().filter_map(|a| if let Arg::Type(Some(s)) = a { Some(s) } else { None }).collect();
+        let strs: Vec<&String> = args.iter().filter_map(|a| if let Arg::Str(Some(s)) = a { Some(s) } else { None }).collect();
+        if let Some(ty) = types.first() {
+            // "Player, assembly_valheim, Version=..." -> "Player"; nested "Outer+Inner"
+            t.ty = Some(ty.split(',').next().unwrap_or(ty).trim().replace('+', "."));
+            t.method = strs.first().map(|s| s.to_string());
+        } else if strs.len() >= 2 {
+            t.ty = Some(strs[0].clone());
+            t.method = Some(strs[1].clone());
+        } else {
+            t.method = strs.first().map(|s| s.to_string());
+        }
+        t.method_type = args.iter().find_map(|a| if let Arg::I4(v) = a { Some(*v) } else { None });
+        t
+    }
+
+    fn merge(&mut self, o: &Target) {
+        if o.ty.is_some() {
+            self.ty = o.ty.clone();
+        }
+        if o.method.is_some() {
+            self.method = o.method.clone();
+        }
+        if o.method_type.is_some() {
+            self.method_type = o.method_type;
+        }
+    }
+
+    fn name(&self) -> Option<String> {
+        let ty = self.ty.as_deref()?;
+        // keep only the short type name; namespaces are noise for Valheim's types
+        let short = ty.rsplit('.').next().unwrap_or(ty);
+        let m = match (self.method_type.unwrap_or(0), self.method.as_deref()) {
+            (1, Some(m)) => format!("get_{m}"),
+            (2, Some(m)) => format!("set_{m}"),
+            (3, _) => ".ctor".to_string(),
+            (4, _) => ".cctor".to_string(),
+            (_, Some(m)) => m.to_string(),
+            _ => return None,
+        };
+        Some(format!("{short}.{m}"))
+    }
+}
+
+/// Every Harmony patch declared with attributes in a DLL. Patches set up in code
+/// (harmony.Patch(...)) can't be seen this way and are left out.
+fn patches_of(b: &[u8]) -> Option<Vec<Patch>> {
+    let m = Metadata::parse(b)?;
+    // attribute constructors that belong to Harmony: MemberRef row -> (attribute name, params)
+    let mut harmony_ctors: HashMap<u32, (String, Vec<Param>)> = HashMap::new();
+    for i in 1..=m.rows[0x0A] {
+        let (table, row) = m.decode(Coded::MemberRefParent, m.get(0x0A, i, 0));
+        if table != 0x01 || m.string(m.get(0x0A, i, 1)) != ".ctor" {
+            continue;
+        }
+        let full = m.type_ref_name(0x01, row);
+        let Some(name) = full.strip_prefix("HarmonyLib.").or_else(|| full.strip_prefix("Harmony.")) else { continue };
+        if !matches!(name, "HarmonyPatch" | "HarmonyPrefix" | "HarmonyPostfix" | "HarmonyTranspiler" | "HarmonyFinalizer") {
+            continue;
+        }
+        let Some(params) = m.blob(m.get(0x0A, i, 2)).and_then(|sig| m.ctor_params(sig)) else { continue };
+        harmony_ctors.insert(i, (name.to_string(), params));
+    }
+    if harmony_ctors.is_empty() {
+        return Some(Vec::new());
+    }
+    // (table, row) of the thing an attribute sits on -> its Harmony attributes
+    let mut attrs: HashMap<(usize, u32), Vec<(String, Vec<Arg>)>> = HashMap::new();
+    for i in 1..=m.rows[0x0C] {
+        let (ctor_table, ctor_row) = m.decode(Coded::CustomAttributeType, m.get(0x0C, i, 1));
+        if ctor_table != 0x0A {
+            continue;
+        }
+        let Some((name, params)) = harmony_ctors.get(&ctor_row) else { continue };
+        let parent = m.decode(Coded::HasCustomAttribute, m.get(0x0C, i, 0));
+        let args = m.blob(m.get(0x0C, i, 2)).and_then(|v| attr_args(params, v)).unwrap_or_default();
+        attrs.entry(parent).or_default().push((name.clone(), args));
+    }
+    let target_of = |list: Option<&Vec<(String, Vec<Arg>)>>| -> (Option<Target>, Option<PatchKind>) {
+        let mut t: Option<Target> = None;
+        let mut kind = None;
+        for (name, args) in list.into_iter().flatten() {
+            match name.as_str() {
+                "HarmonyPatch" => t.get_or_insert_with(Target::default).merge(&Target::from_args(args)),
+                "HarmonyPrefix" => kind = Some(PatchKind::Prefix),
+                "HarmonyPostfix" => kind = Some(PatchKind::Postfix),
+                "HarmonyTranspiler" => kind = Some(PatchKind::Transpiler),
+                "HarmonyFinalizer" => kind = Some(PatchKind::Finalizer),
+                _ => {}
+            }
+        }
+        (t, kind)
+    };
+    let n = m.rows[0x02];
+    let mut out: HashSet<Patch> = HashSet::new();
+    for ty in 1..=n {
+        let (class_target, _) = target_of(attrs.get(&(0x02, ty)));
+        let from = m.get(0x02, ty, 5);
+        let to = if ty < n { m.get(0x02, ty + 1, 5) } else { m.rows[0x06] + 1 };
+        for md in from..to.max(from) {
+            let (method_target, marked) = target_of(attrs.get(&(0x06, md)));
+            if class_target.is_none() && method_target.is_none() {
+                continue;
+            }
+            let name = m.string(m.get(0x06, md, 3));
+            let kind = marked.or(match name.as_str() {
+                "Prefix" => Some(PatchKind::Prefix),
+                "Postfix" => Some(PatchKind::Postfix),
+                "Transpiler" => Some(PatchKind::Transpiler),
+                "Finalizer" => Some(PatchKind::Finalizer),
+                _ => None,
+            });
+            let Some(kind) = kind else { continue };
+            let mut t = class_target.clone().unwrap_or_default();
+            if let Some(mt) = &method_target {
+                t.merge(mt);
+            }
+            let Some(target) = t.name() else { continue };
+            let can_skip = kind == PatchKind::Prefix && returns_bool(m.blob(m.get(0x06, md, 4)).unwrap_or_default());
+            out.insert(Patch { target, kind, can_skip });
+        }
+    }
+    let mut v: Vec<Patch> = out.into_iter().collect();
+    v.sort_by(|a, b| a.target.cmp(&b.target));
+    Some(v)
+}
+
+/// Does a MethodDef signature return bool?
+fn returns_bool(sig: &[u8]) -> bool {
+    let Some(&conv) = sig.first() else { return false };
+    let mut p = 1;
+    if conv & 0x10 != 0 && cu(sig, &mut p).is_none() {
+        return false;
+    }
+    if cu(sig, &mut p).is_none() {
+        return false;
+    }
+    // skip custom modifiers
+    while matches!(sig.get(p), Some(0x1F) | Some(0x20)) {
+        p += 1;
+        if cu(sig, &mut p).is_none() {
+            return false;
+        }
+    }
+    sig.get(p) == Some(&0x02)
+}
+
+fn patch_cache() -> &'static Mutex<HashMap<PathBuf, (Stamp, Vec<Patch>)>> {
+    static C: OnceLock<Mutex<HashMap<PathBuf, (Stamp, Vec<Patch>)>>> = OnceLock::new();
+    C.get_or_init(Default::default)
+}
+
+/// Harmony patches in one DLL (cached by size and modification time).
+pub fn dll_patches(path: &Path) -> Vec<Patch> {
+    let Some(st) = stamp(path) else { return Vec::new() };
+    if let Some((s, v)) = patch_cache().lock().unwrap().get(path) {
+        if *s == st {
+            return v.clone();
+        }
+    }
+    let v = std::fs::read(path).ok().and_then(|b| patches_of(&b)).unwrap_or_default();
+    patch_cache().lock().unwrap().insert(path.to_path_buf(), (st, v.clone()));
+    v
+}
+
 // ------------------------------------------------------------ what a mod uses / what the game has
 
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
@@ -560,7 +905,24 @@ fn describe(u: &MemberUse) -> String {
     }
 }
 
-/// Every enabled mod DLL in `profile` that uses something the installed game doesn't have.
+/// The field names of one type in one of the game's assemblies. For self-checks of plugins
+/// that reach game fields by name.
+#[cfg(test)]
+pub fn game_type_fields(game_dir: &Path, asm: &str, type_name: &str) -> Option<HashSet<String>> {
+    let b = std::fs::read(game_dir.join("Valheim_Data").join("Managed").join(asm)).ok()?;
+    let (_, types) = index_assembly(&b)?;
+    types.into_iter().find(|(n, _)| n == type_name).map(|(_, t)| t.fields)
+}
+
+/// (game members a DLL uses, the ones this game version doesn't have). For self-checks.
+#[cfg(test)]
+pub fn missing_in_game(dll: &Path, game_dir: &Path) -> (usize, Vec<String>) {
+    let Some(game) = game_index(game_dir) else { return (0, vec!["game not found".into()]) };
+    let uses = dll_uses(dll).unwrap_or_default();
+    let missing = uses.iter().filter(|u| game.has(u) == Some(false)).map(describe).collect();
+    (uses.len(), missing)
+}
+
 pub fn check_profile(profile: &Profile, profile_dir: &Path, game_dir: &Path) -> Vec<CompatIssue> {
     let Some(game) = game_index(game_dir) else { return Vec::new() };
     let mut out = Vec::new();
@@ -691,5 +1053,26 @@ mod tests {
             println!("{}: {}", i.name, i.missing.join(", "));
         }
         println!("culprits for the freeze: {:?}", mods_using("MissingFieldException: Field not found: bool .InstanceRenderer.m_frustumCull Due to: Could not find field", &profile, &crate::profiles::dir(&name)));
+    }
+
+    /// Dump a game type's members: MODHEIM_DUMP_TYPE=CameraEffects cargo test dump_game_type -- --ignored --nocapture
+    #[test]
+    #[ignore]
+    fn dump_game_type() {
+        let Ok(want) = std::env::var("MODHEIM_DUMP_TYPE") else { return };
+        let managed = std::path::Path::new(r"C:\XboxGames\Valheim\Content\Valheim_Data\Managed");
+        for asm in ["assembly_valheim.dll", "assembly_postprocessing.dll", "assembly_sunshafts.dll"] {
+            let b = std::fs::read(managed.join(asm)).unwrap();
+            let (_, types) = index_assembly(&b).unwrap();
+            for (name, t) in types.iter().filter(|(n, _)| want.split(',').any(|w| n.ends_with(w))) {
+                let mut f: Vec<_> = t.fields.iter().collect();
+                f.sort();
+                let mut m: Vec<_> = t.methods.iter().collect();
+                m.sort();
+                println!("{asm} {name}
+  fields: {f:?}
+  methods: {m:?}");
+            }
+        }
     }
 }

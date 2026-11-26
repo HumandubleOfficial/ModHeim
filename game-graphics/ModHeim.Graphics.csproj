@@ -1,0 +1,35 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <!--
+    ModHeim Graphics: pushes Valheim's own renderer further (reflections, full-resolution
+    textures, shadows, tone mapping, anti-aliasing). BepInEx 5 plugin.
+    Build with scripts/build-plugin.ps1: it copies the reference DLLs out of your Valheim
+    install into lib/ (not committed: they belong to Iron Gate / BepInEx).
+  -->
+  <PropertyGroup>
+    <TargetFramework>net48</TargetFramework>
+    <AssemblyName>ModHeim.Graphics</AssemblyName>
+    <RootNamespace>ModHeim.Graphics</RootNamespace>
+    <LangVersion>latest</LangVersion>
+    <Nullable>disable</Nullable>
+    <Version>0.2.0</Version>
+    <AppendTargetFrameworkToOutputPath>false</AppendTargetFrameworkToOutputPath>
+    <GenerateDocumentationFile>false</GenerateDocumentationFile>
+    <DebugType>none</DebugType>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <PackageReference Include="Microsoft.NETFramework.ReferenceAssemblies" Version="1.0.3" PrivateAssets="all" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <Reference Include="BepInEx"><HintPath>..\game-theme\lib\BepInEx.dll</HintPath><Private>false</Private></Reference>
+    <Reference Include="0Harmony"><HintPath>..\game-theme\lib\0Harmony.dll</HintPath><Private>false</Private></Reference>
+    <Reference Include="UnityEngine"><HintPath>..\game-theme\lib\UnityEngine.dll</HintPath><Private>false</Private></Reference>
+    <Reference Include="UnityEngine.CoreModule"><HintPath>..\game-theme\lib\UnityEngine.CoreModule.dll</HintPath><Private>false</Private></Reference>
+    <Reference Include="UnityEngine.InputLegacyModule"><HintPath>..\game-theme\lib\UnityEngine.InputLegacyModule.dll</HintPath><Private>false</Private></Reference>
+    <Reference Include="UnityEngine.TextRenderingModule"><HintPath>..\game-theme\lib\UnityEngine.TextRenderingModule.dll</HintPath><Private>false</Private></Reference>
+    <Reference Include="UnityEngine.IMGUIModule"><HintPath>..\game-theme\lib\UnityEngine.IMGUIModule.dll</HintPath><Private>false</Private></Reference>
+    <Reference Include="assembly_postprocessing"><HintPath>..\game-theme\lib\assembly_postprocessing.dll</HintPath><Private>false</Private></Reference>
+    <Reference Include="netstandard"><HintPath>..\game-theme\lib\netstandard.dll</HintPath><Private>false</Private></Reference>
+  </ItemGroup>
+</Project>

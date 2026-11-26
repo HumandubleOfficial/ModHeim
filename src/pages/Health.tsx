@@ -7,7 +7,6 @@ import {
   Clock,
   Download,
   FileText,
-  Loader2,
   Power,
   RefreshCw,
   Wrench,
@@ -15,7 +14,9 @@ import {
 import { api, errorText, timeAgo, type LogIssue, type ModIssue } from "../api";
 import { useAction, useGameStatus, useIndexInfo, useSettings } from "../hooks";
 import { useUi } from "../store";
+import { RuneLoader } from "../components/RuneLoader";
 import { PageHead } from "../components/Chrome";
+import { ConflictsSection } from "../components/Conflicts";
 
 const pretty = (s: string) => s.replace(/_/g, " ");
 
@@ -91,7 +92,7 @@ export function HealthPage() {
       />
       {report.isLoading ? (
         <div className="empty">
-          <Loader2 className="spin" />
+          <RuneLoader label="Checking your mods…" />
         </div>
       ) : report.error ? (
         <div className="empty">
@@ -170,6 +171,8 @@ export function HealthPage() {
               </div>
             )}
           </div>
+
+          {profile && <ConflictsSection profile={profile} />}
 
           <div>
             <h2 className="section" style={{ marginTop: 0 }}>

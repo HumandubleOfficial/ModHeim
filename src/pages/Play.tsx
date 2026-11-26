@@ -1,12 +1,13 @@
 import { useEffect, useRef, useState } from "react";
 import { getVersion } from "@tauri-apps/api/app";
 import { AlertTriangle, Archive, ChevronDown, Package, ShieldOff } from "lucide-react";
-import { api, BEPINEX_PACK, type Server } from "../api";
+import { api, BEPINEX_PACK, errorText, type Server } from "../api";
 import {
   useAction,
   useBackground,
   useGameStatus,
   useIndexInfo,
+  useInvalidate,
   useNews,
   useProfile,
   useProfiles,
@@ -16,9 +17,9 @@ import {
 } from "../hooks";
 import { shortGameVersion } from "../components/ServerStatus";
 import { UpdateBanner } from "../components/UpdateBanner";
-import { HeroPicture, HeroScene } from "../components/HeroScene";
+import { HeroPicture, HeroScene, useSky } from "../components/HeroScene";
 import { guardLaunch } from "../components/Guard";
-import { sfx } from "../sound";
+import { setRain, sfx } from "../sound";
 import { useUi } from "../store";
 
 /** Interlaced knot between two fading lines. Original artwork. */
@@ -121,6 +122,11 @@ export function PlayPage() {
   const [menu, setMenu] = useState<"main" | "join">("main");
   const [appVersion, setAppVersion] = useState("");
   const [checking, setChecking] = useState(false);
+  const sky = useSky();
+  useEffect(() => {
+    setRain(!background && sky.weather === "rain");
+    return () => setRain(false);
+  }, [sky.weather, background]);
   useEffect(() => {
     getVersion().then(setAppVersion).catch(() => {});
   }, []);
@@ -129,6 +135,7 @@ export function PlayPage() {
     busy: "Starting Valheim",
     success: "Valheim is starting…",
   });
+  const invalidate = useInvalidate();
   const repair = useAction(() => api.repairProfile(settings!.activeProfile), { success: "BepInEx installed" });
 
   const mods = profile?.mods.filter((m) => m.fullName !== BEPINEX_PACK) ?? [];
@@ -144,9 +151,30 @@ export function PlayPage() {
     if (!settings) return;
     const modded = server ? !server.vanilla : !vanilla;
     if (modded) {
+      const target = server?.profile ?? settings.activeProfile;
       setChecking(true);
-      const go = await guardLaunch(server?.profile ?? settings.activeProfile, settings.launchGuard).finally(() => setChecking(false));
-      if (!go) return;
+      try {
+        if (settings.autoUpdate) {
+          const ups = await api.checkUpdates(target).catch(() => []);
+          if (ups.length) {
+            const ui = useUi.getState();
+            ui.setBusy(`Updating ${ups.length} mod${ups.length > 1 ? "s" : ""}`);
+            try {
+              await api.updateMods(target, ups.map((u) => u.fullName));
+              ui.toast("success", `Updated ${ups.length} mod${ups.length > 1 ? "s" : ""} (restore point saved)`);
+            } catch (e) {
+              ui.toast("error", `Couldn't update mods, so the game wasn't started: ${errorText(e)}`);
+              return;
+            } finally {
+              ui.setBusy(null);
+              invalidate();
+            }
+          }
+        }
+        if (!(await guardLaunch(target, settings.launchGuard))) return;
+      } finally {
+        setChecking(false);
+      }
     }
     sfx.horn();
     launch.mutate([vanilla, server?.id]);
@@ -154,7 +182,7 @@ export function PlayPage() {
 
   return (
     <div className="menu-screen">
-      <div className="menu-art">{background ? <HeroPicture src={background} /> : <HeroScene />}</div>
+      <div className="menu-art">{background ? <HeroPicture src={background} /> : <HeroScene phase={sky.phase} weather={sky.weather} />}</div>
 
       <header className="menu-top">
         <div className="eyebrow">Active profile</div>
@@ -266,6 +294,12 @@ export function PlayPage() {
           <button className="link" onClick={() => setPage("backups")}>
             <Archive /> Worlds backed up before modded play
           </button>
+        )}
+        {!background && (
+          <div className="faint">
+            {{ dawn: "Dawn", day: "Day", dusk: "Dusk", night: "Night" }[sky.phase]}
+            {sky.weather !== "clear" ? ` · ${sky.weather === "rain" ? "Rain" : "Snow"}` : ""}
+          </div>
         )}
         {appVersion && <div className="faint">ModHeim {appVersion}</div>}
       </footer>

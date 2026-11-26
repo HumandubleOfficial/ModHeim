@@ -171,7 +171,7 @@ a {
   font-size: 14px;
   font-weight: 500;
   text-align: left;
-  cursor: pointer;
+  cursor: var(--cursor-pointer, pointer);
   position: relative;
   transition: background 0.15s, color 0.15s;
 }
@@ -395,7 +395,7 @@ h2.section .muted {
   color: var(--text);
   font-weight: 550;
   font-size: 13.5px;
-  cursor: pointer;
+  cursor: var(--cursor-pointer, pointer);
   white-space: nowrap;
   transition: background 0.15s, border-color 0.15s, transform 0.05s, box-shadow 0.15s;
 }
@@ -535,7 +535,7 @@ h2.section .muted {
   border-radius: 999px;
   border: 1px solid var(--panel-border);
   background: var(--panel-sunken);
-  cursor: pointer;
+  cursor: var(--cursor-pointer, pointer);
   transition: background 0.15s;
   padding: 0;
 }
@@ -568,7 +568,7 @@ h2.section .muted {
   display: flex;
   align-items: center;
   gap: 10px;
-  cursor: pointer;
+  cursor: var(--cursor-pointer, pointer);
 }
 
 .seg {
@@ -582,7 +582,7 @@ h2.section .muted {
   background: var(--panel-sunken);
   color: var(--text-dim);
   padding: 7px 14px;
-  cursor: pointer;
+  cursor: var(--cursor-pointer, pointer);
   font-size: 13px;
 }
 .seg button + button {
@@ -871,7 +871,7 @@ h2.section .muted {
   padding: 12px 14px;
   border-radius: var(--radius);
   border: 1px solid transparent;
-  cursor: pointer;
+  cursor: var(--cursor-pointer, pointer);
   transition: background 0.12s, border-color 0.12s;
 }
 .mod-row:hover {
@@ -1161,7 +1161,7 @@ h2.section .muted {
   border-radius: 8px;
   border: 2px solid var(--panel-border);
   overflow: hidden;
-  cursor: pointer;
+  cursor: var(--cursor-pointer, pointer);
   background: none;
   padding: 0;
   text-align: left;
@@ -1378,7 +1378,7 @@ h2.section .muted {
   background: transparent;
   border-radius: var(--radius);
   padding: 11px 12px;
-  cursor: pointer;
+  cursor: var(--cursor-pointer, pointer);
   color: var(--text);
 }
 .news-item:hover {
@@ -1439,7 +1439,7 @@ h2.section .muted {
 .theme-tile {
   padding: 12px;
   text-align: left;
-  cursor: pointer;
+  cursor: var(--cursor-pointer, pointer);
   color: var(--text);
   display: flex;
   flex-direction: column;
@@ -1472,7 +1472,7 @@ h2.section .muted {
   border: 1px solid var(--panel-border);
   border-radius: var(--radius-sm);
   background: var(--panel-sunken);
-  cursor: pointer;
+  cursor: var(--cursor-pointer, pointer);
   font-size: 13px;
 }
 .color-field .mono {
@@ -1485,7 +1485,7 @@ h2.section .muted {
   border: 0;
   padding: 0;
   background: none;
-  cursor: pointer;
+  cursor: var(--cursor-pointer, pointer);
 }
 input[type="range"] {
   accent-color: var(--accent);
@@ -1792,7 +1792,7 @@ input[type="range"] {
   background: none;
   color: var(--text-faint);
   font-size: 12px;
-  cursor: pointer;
+  cursor: var(--cursor-pointer, pointer);
 }
 .link-btn:hover {
   color: var(--accent);
@@ -1841,7 +1841,7 @@ input[type="range"] {
   align-items: center;
   gap: 12px;
   padding: 11px 14px;
-  cursor: pointer;
+  cursor: var(--cursor-pointer, pointer);
   list-style: none;
 }
 .log-issue summary::-webkit-details-marker {
@@ -1918,7 +1918,7 @@ input[type="range"] {
   color: var(--accent);
   font-size: 12px;
   font-weight: 600;
-  cursor: pointer;
+  cursor: var(--cursor-pointer, pointer);
 }
 .update-pill svg {
   width: 14px;
@@ -2066,7 +2066,7 @@ input[type="range"] {
   display: flex;
   align-items: center;
   gap: 8px;
-  cursor: pointer;
+  cursor: var(--cursor-pointer, pointer);
   border-radius: 6px;
   padding: 0 8px;
 }
@@ -2109,7 +2109,7 @@ input[type="range"] {
   gap: 16px;
   padding: 8px 12px;
   border-radius: 4px;
-  cursor: pointer;
+  cursor: var(--cursor-pointer, pointer);
 }
 .profile-option:hover,
 .profile-option:focus-visible {
@@ -2135,7 +2135,7 @@ input[type="range"] {
 .menu-item {
   all: unset;
   position: relative;
-  cursor: pointer;
+  cursor: var(--cursor-pointer, pointer);
   display: flex;
   flex-direction: column;
   align-items: center;
@@ -2261,7 +2261,7 @@ input[type="range"] {
 }
 .menu-status .link {
   all: unset;
-  cursor: pointer;
+  cursor: var(--cursor-pointer, pointer);
   display: inline-flex;
   align-items: center;
   gap: 5px;
@@ -2306,7 +2306,7 @@ input[type="range"] {
   border-radius: var(--radius);
   background: var(--panel-sunken);
   border: 1px solid var(--panel-border);
-  cursor: pointer;
+  cursor: var(--cursor-pointer, pointer);
 }
 .guard-item.on {
   border-color: color-mix(in srgb, var(--warn) 45%, transparent);
@@ -2471,4 +2471,532 @@ input.range {
   flex: none;
   width: 220px;
   accent-color: var(--accent);
+}
+
+/* ------------------------------------------------------------ conflicts */
+
+.conflict-group + .conflict-group {
+  border-top: 1px solid var(--hairline);
+}
+.conflict-head {
+  all: unset;
+  box-sizing: border-box;
+  width: 100%;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 11px 16px;
+  cursor: var(--cursor-pointer, pointer);
+}
+.conflict-head:hover,
+.conflict-head:focus-visible {
+  background: var(--accent-soft);
+}
+.conflict-head .chev {
+  width: 16px;
+  height: 16px;
+  color: var(--text-faint);
+  transition: transform 0.15s;
+  flex: none;
+}
+.conflict-head .chev.open {
+  transform: rotate(90deg);
+}
+.conflict-body {
+  padding: 2px 16px 14px 42px;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+.conflict-item svg {
+  width: 14px;
+  height: 14px;
+  vertical-align: -2px;
+}
+.hotkey-row {
+  display: flex;
+  gap: 14px;
+  align-items: flex-start;
+  padding: 12px 16px;
+}
+.hotkey-row + .hotkey-row {
+  border-top: 1px solid var(--hairline);
+}
+kbd.key {
+  min-width: 46px;
+  text-align: center;
+  padding: 4px 8px;
+  border-radius: 5px;
+  font-family: var(--font-body);
+  font-weight: 700;
+  font-size: 12px;
+  color: var(--text);
+  background: var(--stone);
+  border: 1px solid rgba(0, 0, 0, 0.6);
+  box-shadow: inset 0 -2px 0 rgba(0, 0, 0, 0.45), 0 0 0 1px var(--hairline);
+  flex: none;
+}
+
+/* ------------------------------------------------------------ changelogs */
+
+.changelog-list {
+  max-height: 56vh;
+  overflow-y: auto;
+  border: 1px solid var(--panel-border);
+  border-radius: var(--radius);
+  background: var(--panel-sunken);
+}
+.changelog-item + .changelog-item {
+  border-top: 1px solid var(--hairline);
+}
+.changelog-head {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 10px 14px;
+}
+.changelog-head input {
+  accent-color: var(--accent);
+}
+.changelog-title {
+  all: unset;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex: 1;
+  min-width: 0;
+  cursor: var(--cursor-pointer, pointer);
+}
+.changelog-title:disabled {
+  cursor: default;
+}
+.changelog-title .chev {
+  width: 15px;
+  height: 15px;
+  color: var(--text-faint);
+  transition: transform 0.15s;
+}
+.changelog-title .chev.open {
+  transform: rotate(90deg);
+}
+.changelog-body {
+  padding: 0 16px 14px 16px;
+}
+.changelog-section + .changelog-section {
+  margin-top: 12px;
+}
+.changelog-version {
+  font-family: var(--font-display);
+  color: var(--accent-2);
+  font-weight: 700;
+  margin-bottom: 2px;
+}
+.badge.as-button {
+  cursor: var(--cursor-pointer, pointer);
+  border: none;
+  font: inherit;
+  font-size: 11px;
+}
+.badge.as-button:hover {
+  filter: brightness(1.2);
+}
+
+/* ------------------------------------------------------------ worlds & play */
+
+.days-chart {
+  height: 150px;
+  display: flex;
+  flex-direction: column;
+}
+.days-chart .bars {
+  flex: 1;
+  display: grid;
+  grid-template-columns: repeat(14, 1fr);
+  gap: 2px;
+  align-items: end;
+  border-bottom: 1px solid var(--hairline);
+}
+.days-chart .bar-slot {
+  position: relative;
+  height: 100%;
+  display: flex;
+  align-items: flex-end;
+  justify-content: center;
+  cursor: default;
+}
+.days-chart .bar {
+  width: min(70%, 22px);
+  background: var(--accent);
+  border-radius: 4px 4px 0 0;
+}
+.days-chart .bar.zero {
+  background: var(--hairline);
+  border-radius: 1px;
+}
+.days-chart .bar-slot:hover .bar:not(.zero) {
+  background: var(--accent-2);
+}
+.days-chart .tip {
+  position: absolute;
+  bottom: calc(100% + 6px);
+  left: 50%;
+  transform: translateX(-50%);
+  white-space: nowrap;
+  padding: 5px 9px;
+  border-radius: 6px;
+  background: var(--panel-raised);
+  box-shadow: var(--panel-shadow);
+  font-size: 12px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  z-index: 2;
+  pointer-events: none;
+}
+.days-chart .tip span {
+  color: var(--text-faint);
+}
+.days-chart .axis {
+  display: flex;
+  justify-content: space-between;
+  font-size: 11px;
+  color: var(--text-faint);
+  padding-top: 4px;
+}
+.world-card {
+  padding: 14px 16px;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+.world-icon {
+  width: 18px;
+  height: 18px;
+  color: var(--accent);
+}
+
+/* ------------------------------------------------------------ carved mod cards */
+
+.card-row {
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  display: grid;
+  gap: 14px;
+  padding-bottom: 14px;
+}
+.mod-card {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  min-height: 186px;
+  padding: 14px 14px 12px;
+  border-radius: var(--radius);
+  background: var(--panel);
+  border: 1px solid var(--panel-border);
+  box-shadow: var(--panel-shadow);
+  cursor: var(--cursor-pointer, pointer);
+  transition: transform 0.14s ease, box-shadow 0.14s ease, border-color 0.14s;
+  outline: none;
+}
+.mod-card:hover,
+.mod-card:focus-visible {
+  transform: translateY(-2px);
+  border-color: color-mix(in srgb, var(--accent) 55%, transparent);
+  box-shadow: var(--panel-shadow), 0 0 0 1px color-mix(in srgb, var(--accent) 35%, transparent), 0 10px 26px rgba(0, 0, 0, 0.35);
+}
+.mod-card.selected {
+  border-color: var(--accent);
+}
+.card-top {
+  display: flex;
+  gap: 12px;
+  min-width: 0;
+}
+.card-title {
+  min-width: 0;
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+.card-title .mod-name {
+  font-size: 15px;
+  line-height: 1.2;
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+}
+.card-title .owner {
+  font-size: 12px;
+  color: var(--text-faint);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.card-tags {
+  display: flex;
+  gap: 4px;
+  flex-wrap: wrap;
+  margin-top: 4px;
+}
+.card-tags .tag {
+  font-size: 10.5px;
+  padding: 1px 6px;
+  border-radius: 3px;
+  color: var(--text-dim);
+  background: rgba(0, 0, 0, 0.25);
+  border: 1px solid var(--hairline);
+}
+.mod-card .mod-desc {
+  flex: 1;
+  font-size: 12.5px;
+  color: var(--text-dim);
+  display: -webkit-box;
+  -webkit-line-clamp: 3;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+}
+.card-foot {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  font-size: 12px;
+  color: var(--text-dim);
+  padding-top: 8px;
+  border-top: 1px solid var(--hairline);
+}
+.card-foot > span:not(.chip):not(.spacer) {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+}
+.card-foot svg {
+  width: 13px;
+  height: 13px;
+}
+/* the icon sits in an iron-rimmed frame with four rivets */
+.icon-frame {
+  position: relative;
+  flex: none;
+  padding: 3px;
+  border-radius: 7px;
+  background: linear-gradient(180deg, #5d5d5d, #2b2b2b);
+  box-shadow: 0 2px 4px rgba(0, 0, 0, 0.6), inset 0 1px 0 rgba(255, 255, 255, 0.18);
+  align-self: flex-start;
+}
+.icon-frame .mod-icon {
+  width: 60px;
+  height: 60px;
+  border-radius: 4px;
+  border: 1px solid rgba(0, 0, 0, 0.7);
+  display: block;
+}
+.mod-row .icon-frame .mod-icon {
+  width: 46px;
+  height: 46px;
+}
+.mod-row .icon-frame {
+  align-self: center;
+}
+.icon-frame::before {
+  content: "";
+  position: absolute;
+  inset: 0;
+  border-radius: inherit;
+  pointer-events: none;
+  background:
+    radial-gradient(circle at 5px 5px, #c9b48a 0 1.4px, transparent 1.8px),
+    radial-gradient(circle at calc(100% - 5px) 5px, #c9b48a 0 1.4px, transparent 1.8px),
+    radial-gradient(circle at 5px calc(100% - 5px), #c9b48a 0 1.4px, transparent 1.8px),
+    radial-gradient(circle at calc(100% - 5px) calc(100% - 5px), #c9b48a 0 1.4px, transparent 1.8px);
+}
+/* installed mods as carved plaques */
+.mod-row.plaque {
+  margin-bottom: 8px;
+  background: var(--panel);
+  border: 1px solid var(--panel-border);
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.35), inset 0 0 0 1px var(--panel-highlight);
+}
+.mod-row.plaque:hover {
+  border-color: color-mix(in srgb, var(--accent) 50%, transparent);
+}
+[data-theme="norse"] .mod-card,
+[data-theme="norse"] .mod-row.plaque {
+  /* a carved groove just inside the edge */
+  box-shadow:
+    var(--panel-shadow),
+    inset 0 0 0 4px rgba(0, 0, 0, 0.0),
+    inset 0 0 0 5px rgba(0, 0, 0, 0.35),
+    inset 0 0 0 6px rgba(255, 200, 130, 0.1);
+}
+[data-theme="modern"] .icon-frame {
+  background: var(--panel-sunken);
+  box-shadow: none;
+  padding: 0;
+}
+[data-theme="modern"] .icon-frame::before {
+  display: none;
+}
+@media (prefers-reduced-motion: reduce) {
+  .mod-card { transition: none; }
+  .mod-card:hover { transform: none; }
+}
+.icon-frame .mod-icon.placeholder {
+  display: grid;
+}
+
+/* ------------------------------------------------------------ rune loader and page transitions */
+
+.rune-loader {
+  display: inline-flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 12px;
+}
+.empty .rune-loader {
+  margin: 0 auto;
+}
+.rune-loader .ring {
+  position: relative;
+  display: grid;
+  place-items: center;
+  flex: none;
+}
+.rune-glyph {
+  position: absolute;
+  transform: translate(-50%, -50%);
+  font-family: var(--font-rune);
+  line-height: 1;
+  color: var(--accent);
+  opacity: 0.18;
+  animation: rune-glow 1.6s linear infinite;
+}
+@keyframes rune-glow {
+  0% { opacity: 1; text-shadow: 0 0 8px var(--accent), 0 0 16px rgba(255, 140, 30, 0.6); }
+  45% { opacity: 0.18; text-shadow: none; }
+  100% { opacity: 0.18; }
+}
+.knot-core {
+  color: var(--accent-2);
+  animation: knot-turn 4.8s linear infinite;
+  filter: drop-shadow(0 0 5px rgba(255, 160, 50, 0.6));
+}
+@keyframes knot-turn {
+  to { transform: rotate(360deg); }
+}
+.rune-label {
+  font-size: 13px;
+  color: var(--text-dim);
+  text-align: center;
+}
+.progress-dock .rune-loader .rune-glyph {
+  opacity: 0.25;
+}
+
+.content > .page {
+  animation: page-in 0.3s cubic-bezier(0.2, 0.7, 0.2, 1) backwards;
+}
+.content > .menu-screen {
+  animation: menu-in 0.45s ease-out both;
+}
+@keyframes page-in {
+  from { opacity: 0; transform: translateY(10px); }
+}
+@keyframes menu-in {
+  from { opacity: 0; }
+}
+.content > .menu-screen .menu {
+  animation: page-in 0.5s 0.1s cubic-bezier(0.2, 0.7, 0.2, 1) backwards;
+}
+@media (prefers-reduced-motion: reduce) {
+  .content > .page,
+  .content > .menu-screen,
+  .content > .menu-screen .menu,
+  .knot-core,
+  .rune-glyph {
+    animation: none;
+  }
+  .rune-glyph { opacity: 0.7; }
+}
+
+/* ------------------------------------------------------------ Norse cursor (original artwork) */
+
+[data-theme="norse"] {
+  --cursor-default: url("data:image/svg+xml;utf8,%3Csvg xmlns='http://www.w3.org/2000/svg' width='32' height='32' viewBox='0 0 32 32'%3E%3Cdefs%3E%3ClinearGradient id='g' x1='0' y1='0' x2='1' y2='1'%3E%3Cstop offset='0' stop-color='%234a4038'/%3E%3Cstop offset='1' stop-color='%2316120e'/%3E%3C/linearGradient%3E%3C/defs%3E%3Cpath d='M3 2 L3 23.5 L8.6 18.3 L12.6 27.2 L16.7 25.4 L12.8 16.8 L20.4 16.6 Z' fill='black' opacity='0.45' transform='translate(1.2 1.4)'/%3E%3Cpath d='M3 2 L3 23.5 L8.6 18.3 L12.6 27.2 L16.7 25.4 L12.8 16.8 L20.4 16.6 Z' fill='url(%23g)' stroke='%23e8a030' stroke-width='1.5' stroke-linejoin='round'/%3E%3Cpath d='M5.2 6.5 L5.2 17.5 M5.2 6.5 L13.5 15' stroke='rgba(255,214,150,0.55)' stroke-width='1' stroke-linecap='round' fill='none'/%3E%3C/svg%3E") 3 2, default;
+  --cursor-pointer: url("data:image/svg+xml;utf8,%3Csvg xmlns='http://www.w3.org/2000/svg' width='32' height='32' viewBox='0 0 32 32'%3E%3Cdefs%3E%3ClinearGradient id='g' x1='0' y1='0' x2='1' y2='1'%3E%3Cstop offset='0' stop-color='%23ffd27a'/%3E%3Cstop offset='1' stop-color='%23b4661a'/%3E%3C/linearGradient%3E%3C/defs%3E%3Cpath d='M3 2 L3 23.5 L8.6 18.3 L12.6 27.2 L16.7 25.4 L12.8 16.8 L20.4 16.6 Z' fill='black' opacity='0.45' transform='translate(1.2 1.4)'/%3E%3Cpath d='M3 2 L3 23.5 L8.6 18.3 L12.6 27.2 L16.7 25.4 L12.8 16.8 L20.4 16.6 Z' fill='url(%23g)' stroke='%232a1708' stroke-width='1.5' stroke-linejoin='round'/%3E%3Cpath d='M5.2 6.5 L5.2 17.5 M5.2 6.5 L13.5 15' stroke='rgba(255,255,255,0.7)' stroke-width='1' stroke-linecap='round' fill='none'/%3E%3C/svg%3E") 3 2, pointer;
+}
+[data-theme="norse"] body {
+  cursor: var(--cursor-default);
+}
+[data-theme="norse"] :is(button:not(:disabled), a[href], [role="button"], select, summary, label:has(input[type="checkbox"]), input[type="checkbox"], input[type="range"]) {
+  cursor: var(--cursor-pointer);
+}
+[data-theme="norse"] :is(input:not([type="checkbox"]):not([type="range"]), textarea, .selectable, .log-view, .markdown) {
+  cursor: text;
+}
+
+/* ------------------------------------------------------------ graphics */
+
+.grid.cols-4 {
+  grid-template-columns: repeat(auto-fill, minmax(210px, 1fr));
+}
+.gfx-preset {
+  all: unset;
+  box-sizing: border-box;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding: 14px 16px;
+  border-radius: var(--radius);
+  background: var(--panel);
+  border: 1px solid var(--panel-border);
+  box-shadow: var(--panel-shadow);
+  cursor: var(--cursor-pointer, pointer);
+  transition: transform 0.14s, border-color 0.14s;
+}
+.gfx-preset:hover:not(:disabled),
+.gfx-preset:focus-visible {
+  transform: translateY(-2px);
+  border-color: color-mix(in srgb, var(--accent) 55%, transparent);
+}
+.gfx-preset.on {
+  border-color: var(--accent);
+  box-shadow: var(--panel-shadow), 0 0 0 1px var(--accent), 0 0 18px rgba(240, 160, 40, 0.25);
+}
+.gfx-preset svg {
+  width: 16px;
+  height: 16px;
+}
+.gfx-preset.star {
+  background:
+    radial-gradient(120% 90% at 0% 0%, color-mix(in srgb, var(--accent) 16%, transparent), transparent 60%),
+    var(--panel);
+  border-color: color-mix(in srgb, var(--accent) 40%, transparent);
+}
+.gfx-preset.star svg {
+  color: var(--accent);
+}
+.notice kbd {
+  padding: 0 5px;
+  border-radius: 4px;
+  font-family: var(--font-mono, monospace);
+  font-size: 12px;
+  background: var(--panel-sunken);
+  border: 1px solid var(--hairline);
+}
+.gfx-preset .badge {
+  align-self: flex-start;
+}
+.gfx-h {
+  font-family: var(--font-display);
+  color: var(--accent-2);
+  font-size: 15px;
+  margin: 18px 0 4px;
+}
+.gfx-h:first-child {
+  margin-top: 0;
 }

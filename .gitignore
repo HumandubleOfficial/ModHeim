@@ -30,3 +30,5 @@ game-theme/obj/
 
 # Signing keys never go in the repo
 *.key
+game-graphics/bin/
+game-graphics/obj/

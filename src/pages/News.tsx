@@ -1,11 +1,12 @@
 import { useEffect, useState } from "react";
-import { ExternalLink, Loader2, RefreshCw, WifiOff } from "lucide-react";
+import { ExternalLink, RefreshCw, WifiOff } from "lucide-react";
 import { UpdateBanner } from "../components/UpdateBanner";
 import { api, errorText, isNewer, type NewsItem } from "../api";
 import { useNews } from "../hooks";
 import { PageHead } from "../components/Chrome";
 import { Md } from "../components/Markdown";
 import { useQueryClient } from "@tanstack/react-query";
+import { RuneLoader } from "../components/RuneLoader";
 
 const fmtDate = (unix: number) =>
   new Date(unix * 1000).toLocaleDateString(undefined, { day: "numeric", month: "short", year: "numeric" });
@@ -83,7 +84,7 @@ export function NewsPage() {
       )}
       {news.isLoading ? (
         <div className="empty">
-          <Loader2 className="spin" />
+          <RuneLoader />
         </div>
       ) : news.error ? (
         <div className="empty">

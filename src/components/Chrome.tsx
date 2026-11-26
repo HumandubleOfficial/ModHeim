@@ -1,8 +1,9 @@
 import { getCurrentWindow } from "@tauri-apps/api/window";
-import { CheckCircle2, Info, Loader2, Minus, Square, X, XCircle } from "lucide-react";
+import { CheckCircle2, Info, Minus, Square, X, XCircle } from "lucide-react";
 import { formatBytes } from "../api";
 import { useUi } from "../store";
 import { UpdatePill } from "../updater";
+import { RuneLoader } from "./RuneLoader";
 
 /** ModHeim mark: a simple longship prow inside a shield ring (original artwork). */
 export function Mark({ size = 20 }: { size?: number }) {
@@ -77,7 +78,7 @@ export function ProgressDock() {
   return (
     <div className="panel progress-dock" role="status">
       <div className="row">
-        <Loader2 size={16} className="spin" style={{ color: "var(--accent)" }} />
+        <RuneLoader size={22} />
         <div className="label">{label}</div>
       </div>
       {sub && <div className="sub">{sub}</div>}
