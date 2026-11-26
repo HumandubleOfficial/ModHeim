@@ -279,14 +279,14 @@ function handle(cmd: string, args: Args): unknown {
       return { id: "x", profile: "Default", created: iso(0), reason: "Saved by you", modCount: 22, bytes: 48_000_000 };
     case "list_backups":
       return {
-        folder: "C:\Users\you\AppData\Roaming\ModHeim\backups",
+        folder: String.raw`C:\Users\you\AppData\Roaming\ModHeim\backups`,
         backups: [
           { file: "Valheim saves 2026-11-25 18-12-03.zip", created: iso(0.1), reason: "Before playing Mods", bytes: 9_300_000, files: 131, worlds: ["Ashlands Outpost", "TheWorld"] },
           { file: "Valheim saves 2026-11-23 20-40-10.zip", created: iso(2), reason: "Backed up by you", bytes: 9_100_000, files: 128, worlds: ["Ashlands Outpost", "TheWorld"] },
         ],
         sources: [
-          { label: "worlds_local", path: "C:\Users\you\AppData\LocalLow\IronGate\Valheim\worlds_local", files: 21, bytes: 1_050_000 },
-          { label: "xbox_saves", path: "C:\Users\you\AppData\Local\Packages\CoffeeStainStudios.Valheim\SystemAppData\wgs", files: 110, bytes: 26_000_000 },
+          { label: "worlds_local", path: String.raw`C:\Users\you\AppData\LocalLow\IronGate\Valheim\worlds_local`, files: 21, bytes: 1_050_000 },
+          { label: "xbox_saves", path: String.raw`C:\Users\you\AppData\Local\Packages\CoffeeStainStudios.Valheim\SystemAppData\wgs`, files: 110, bytes: 26_000_000 },
         ],
       };
     case "create_backup":

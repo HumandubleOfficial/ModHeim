@@ -347,7 +347,9 @@ export function HeroScene({ phase, weather }: { phase: Phase; weather: Weather }
     const canvas = art.current;
     if (!el || !canvas) return;
     const img = new Image();
-    const url = URL.createObjectURL(new Blob([sceneSvg(phase, weather)], { type: "image/svg+xml" }));
+    // a data URL, not a blob URL: nothing to revoke, so a quick unmount/remount can't
+    // leave the image loading from a dead URL
+    const url = `data:image/svg+xml;charset=utf-8,${encodeURIComponent(sceneSvg(phase, weather))}`;
     let raf = 0;
     const draw = () => {
       const { width, height } = el.getBoundingClientRect();
@@ -370,7 +372,7 @@ export function HeroScene({ phase, weather }: { phase: Phase; weather: Weather }
     return () => {
       ro.disconnect();
       cancelAnimationFrame(raf);
-      URL.revokeObjectURL(url);
+      img.onload = null;
     };
   }, [phase, weather]);
 

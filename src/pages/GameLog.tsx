@@ -193,7 +193,8 @@ export function GameLogPage() {
             </button>
           ))}
         </div>
-        <div className="search-box" style={{ flex: 1 }}>
+        {/* narrower minimum than other searches, so the folder button stays on the row at the smallest window size */}
+        <div className="search-box" style={{ flex: 1, minWidth: 150 }}>
           <Search />
           <input className="input" placeholder="Search the log" value={query} onChange={(e) => setQuery(e.target.value)} />
         </div>

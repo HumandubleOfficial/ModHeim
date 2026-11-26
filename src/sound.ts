@@ -50,42 +50,59 @@ function env(c: AudioContext, peak: number, attack: number, decay: number, at = 
   return g;
 }
 
+/** A little random spread so repeated clacks don't sound like a machine. */
+const vary = (v: number, spread = 0.07) => v * (1 + (Math.random() * 2 - 1) * spread);
+
+/**
+ * One wooden "clack": a dry, broadband contact snap (filtered noise, no pitch to it) over a short
+ * low knock from the body of the wood. Like a hardwood key or a game piece set down on a board.
+ */
+function clack(c: AudioContext, at: number, level: number, body: number, snap: number) {
+  // contact snap: noise through a low-Q band so it's a click, not a tone
+  const n = noiseSource(c);
+  const hp = c.createBiquadFilter();
+  hp.type = "highpass";
+  hp.frequency.value = 700;
+  const bp = c.createBiquadFilter();
+  bp.type = "bandpass";
+  bp.frequency.value = vary(snap, 0.12);
+  bp.Q.value = 0.8;
+  n.connect(hp).connect(bp).connect(env(c, level, 0.0006, vary(0.014, 0.2), at)).connect(master!);
+  n.start(at, Math.random() * 1.5);
+  n.stop(at + 0.04);
+
+  // body: a short knock that drops in pitch, so it lands low and woody
+  const o = c.createOscillator();
+  o.type = "triangle";
+  const f = vary(body);
+  o.frequency.setValueAtTime(f, at);
+  o.frequency.exponentialRampToValueAtTime(f * 0.62, at + 0.035);
+  o.connect(env(c, level * 0.9, 0.001, vary(0.045, 0.15), at)).connect(master!);
+  o.start(at);
+  o.stop(at + 0.08);
+}
+
+let lastHoverAt = 0;
+
 export const sfx = {
-  /** Soft wooden tick when the pointer moves onto a button. */
+  /** A soft, low clack when the pointer moves onto a button. */
   hover() {
     if (!cfg.sounds || !ctx || ctx.state !== "running") return;
-    const c = ctx;
-    const o = c.createOscillator();
-    o.type = "triangle";
-    o.frequency.setValueAtTime(1900, c.currentTime);
-    o.frequency.exponentialRampToValueAtTime(1100, c.currentTime + 0.03);
-    const g = env(c, 0.05, 0.002, 0.035);
-    o.connect(g).connect(master!);
-    o.start();
-    o.stop(c.currentTime + 0.06);
+    const now = performance.now();
+    // sweeping across a list shouldn't turn into a drum roll
+    if (now - lastHoverAt < 45) return;
+    lastHoverAt = now;
+    clack(ctx, ctx.currentTime, 0.07, 380, 2200);
   },
 
-  /** A dull "thock", like knocking on a shield. */
+  /** A firm clack-clack, like pressing and releasing a hardwood key. */
   click() {
     if (!cfg.sounds) return;
     const c = audio();
     if (!c) return;
     const t = c.currentTime;
-    const o = c.createOscillator();
-    o.type = "sine";
-    o.frequency.setValueAtTime(190, t);
-    o.frequency.exponentialRampToValueAtTime(70, t + 0.09);
-    o.connect(env(c, 0.35, 0.003, 0.11)).connect(master!);
-    o.start(t);
-    o.stop(t + 0.15);
-    const n = noiseSource(c);
-    const bp = c.createBiquadFilter();
-    bp.type = "bandpass";
-    bp.frequency.value = 900;
-    bp.Q.value = 1.2;
-    n.connect(bp).connect(env(c, 0.12, 0.002, 0.04)).connect(master!);
-    n.start(t);
-    n.stop(t + 0.08);
+    clack(c, t, 0.32, 240, 1700);
+    clack(c, t + vary(0.055, 0.15), 0.12, 300, 2000);
   },
 
   /** A low war horn when the game launches. */
