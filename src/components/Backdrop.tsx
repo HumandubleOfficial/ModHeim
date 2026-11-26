@@ -2,12 +2,14 @@ import { useEffect, useRef } from "react";
 import type { Backdrop as Kind } from "../api";
 
 /*
- * Live backdrop behind the pages. Everything is drawn on a quarter-size canvas and scaled up,
- * which keeps it cheap and gives the soft, hazy look for free. It runs at ~30 fps, stops while
- * the window is hidden, and holds still when Windows asks for reduced motion.
+ * Live backdrop behind the pages. Everything is drawn at half the display's real resolution and
+ * scaled up: still cheap, still soft and hazy, but without the blur a quarter-size canvas gave.
+ * It runs at ~30 fps, stops while the window is hidden, and holds still when Windows asks for
+ * reduced motion.
  */
 
-const SCALE = 4;
+/** device pixels per backdrop pixel */
+const SCALE = 2;
 const FPS = 30;
 
 type Dot = { x: number; y: number; vx: number; vy: number; life: number; max: number; phase: number };
@@ -151,13 +153,13 @@ function useBackdrop(canvas: React.RefObject<HTMLCanvasElement | null>, stars: R
 
     const size = () => {
       const r = c.parentElement!.getBoundingClientRect();
-      const w = Math.max(1, Math.round(r.width / SCALE));
-      const h = Math.max(1, Math.round(r.height / SCALE));
+      const dpr = window.devicePixelRatio || 1;
+      const w = Math.max(1, Math.round((r.width * dpr) / SCALE));
+      const h = Math.max(1, Math.round((r.height * dpr) / SCALE));
       if (c.width !== w || c.height !== h) {
         c.width = w;
         c.height = h;
         // stars: crisp, full resolution, drawn once per size
-        const dpr = window.devicePixelRatio || 1;
         sc.width = Math.round(r.width * dpr);
         sc.height = Math.round(r.height * dpr);
         sctx.clearRect(0, 0, sc.width, sc.height);
@@ -180,7 +182,13 @@ function useBackdrop(canvas: React.RefObject<HTMLCanvasElement | null>, stars: R
       if (now - last < 1000 / FPS) return;
       const dt = Math.min(0.1, (now - last) / 1000);
       last = now;
-      const { w, h } = size();
+      const size2 = size();
+      // the scenes are laid out for a quarter-size canvas; draw them in those units, scaled up,
+      // so the shapes stay the same but their edges come out at the higher resolution
+      const k = Math.max(1, (4 * (window.devicePixelRatio || 1)) / SCALE);
+      const w = size2.w / k;
+      const h = size2.h / k;
+      ctx.setTransform(k, 0, 0, k, 0, 0);
       const t = (now - start) / 1000;
       scenes[kind](ctx, w, h, t);
 

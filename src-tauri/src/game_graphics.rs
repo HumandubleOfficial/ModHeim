@@ -9,7 +9,7 @@ use crate::error::Result;
 use crate::profiles::{self, InstalledMod, Profile};
 
 pub const PLUGIN_ID: &str = "ModHeim-Graphics";
-pub const PLUGIN_VERSION: &str = "0.2.0";
+pub const PLUGIN_VERSION: &str = "0.3.0";
 const PLUGIN_DLL: &[u8] = include_bytes!("../resources/ModHeim.Graphics.dll");
 const PLUGIN_REL: &str = "BepInEx/plugins/ModHeim-Graphics/ModHeim.Graphics.dll";
 const SETTINGS_REL: &str = "BepInEx/config/ModHeim.Graphics.preset";
@@ -61,6 +61,21 @@ pub struct Graphics {
     pub film_grain: f32,
     /// in-game before/after key (a Unity KeyCode name)
     pub compare_key: String,
+    /// 0 game, 1 more, 2 ultra: fires and torches lighting and shadowing
+    pub light_quality: u8,
+    /// multiplier on the game's grass amount; 0 = game's
+    pub grass_density: f32,
+    pub grass_shadows: bool,
+    /// the game's terrain tessellation
+    pub tessellation: bool,
+    /// 0..1, sharper textures at a distance
+    pub texture_sharpness: f32,
+    /// 0 game, 1 realistic, 2 ultra water
+    pub water: u8,
+    /// how far you see into water; 1 = game's
+    pub water_clarity: f32,
+    /// 0 game, 1 subtle, 2 cinematic
+    pub motion_blur: u8,
 }
 
 pub const GRADES: [&str; 5] = ["Off", "Cinematic", "Golden", "Nordic", "Moody"];
@@ -97,6 +112,14 @@ impl Default for Graphics {
             deband: false,
             film_grain: 0.0,
             compare_key: "F9".into(),
+            light_quality: 0,
+            grass_density: 0.0,
+            grass_shadows: false,
+            tessellation: false,
+            texture_sharpness: 0.0,
+            water: 0,
+            water_clarity: 1.0,
+            motion_blur: 0,
         }
     }
 }
@@ -117,7 +140,9 @@ impl Graphics {
              AmbientOcclusion = {}\nAntiAliasing = {}\nSharpen = {:.2}\nTonemapping = {}\nExposure = {:.2}\n\
              Contrast = {:.2}\nSaturation = {:.2}\nTemperature = {:.1}\nBloom = {:.2}\nVignette = {:.2}\n\
              AutoExposure = {}\nGrassDistance = {:.0}\nGrade = {}\nGradeStrength = {:.2}\nClarity = {:.2}\n\
-             GodRays = {}\nDeband = {}\nFilmGrain = {:.2}\nCompareKey = {}\n",
+             GodRays = {}\nDeband = {}\nFilmGrain = {:.2}\nCompareKey = {}\nLightQuality = {}\nGrassDensity = {:.2}\n\
+             GrassShadows = {}\nTessellation = {}\nTextureSharpness = {:.2}\nWater = {}\nWaterClarity = {:.2}\n\
+             MotionBlur = {}\n",
             self.enabled,
             self.preset.replace(['\n', '\r', '='], " "),
             self.reflections.min(3),
@@ -147,6 +172,14 @@ impl Graphics {
             self.deband,
             self.film_grain.clamp(0.0, 0.6),
             key,
+            self.light_quality.min(2),
+            self.grass_density.clamp(0.0, 3.0),
+            self.grass_shadows,
+            self.tessellation,
+            self.texture_sharpness.clamp(0.0, 1.0),
+            self.water.min(2),
+            self.water_clarity.clamp(0.5, 3.0),
+            self.motion_blur.min(2),
         )
     }
 
@@ -192,6 +225,14 @@ impl Graphics {
                 "deband" => g.deband = b(),
                 "filmgrain" => g.film_grain = f(),
                 "comparekey" => g.compare_key = v.to_string(),
+                "lightquality" => g.light_quality = n().min(2) as u8,
+                "grassdensity" => g.grass_density = f(),
+                "grassshadows" => g.grass_shadows = b(),
+                "tessellation" => g.tessellation = b(),
+                "texturesharpness" => g.texture_sharpness = f(),
+                "water" => g.water = n().min(2) as u8,
+                "waterclarity" => g.water_clarity = f(),
+                "motionblur" => g.motion_blur = n().min(2) as u8,
                 _ => {}
             }
         }
@@ -309,6 +350,14 @@ mod tests {
             deband: true,
             film_grain: 0.15,
             compare_key: "F9; Enabled = false".into(),
+            light_quality: 5,
+            grass_density: 1.5,
+            grass_shadows: true,
+            tessellation: true,
+            texture_sharpness: 0.5,
+            water: 9,
+            water_clarity: 1.8,
+            motion_blur: 1,
         };
         let file = g.to_file();
         assert!(file.contains("Preset = Ultra Enabled   false\n"));
@@ -329,6 +378,15 @@ mod tests {
         assert_eq!(back.vignette, 0.25);
         assert!(back.deband);
         assert_eq!(back.film_grain, 0.15);
+        assert_eq!(back.light_quality, 2);
+        assert_eq!(back.grass_density, 1.5);
+        assert!(back.grass_shadows && back.tessellation);
+        assert_eq!(back.texture_sharpness, 0.5);
+        assert_eq!(back.water, 2);
+        assert_eq!(back.water_clarity, 1.8);
+        assert_eq!(back.motion_blur, 1);
+        // files from older launchers keep the game's water
+        assert_eq!(Graphics::parse("Enabled = true").water_clarity, 1.0);
         assert_eq!(Graphics::parse("Tonemapping = Weird").to_file().contains("Tonemapping = Game"), true);
     }
 
@@ -367,7 +425,16 @@ mod tests {
                 "AmplifyOcclusionEffect",
                 &["SampleCount", "Intensity", "PowerExponent", "BlurEnabled", "BlurPasses", "FilterEnabled"][..],
             ),
-            ("assembly_valheim.dll", "ClutterSystem", &["m_instance", "m_distance"][..]),
+            ("assembly_valheim.dll", "ClutterSystem", &["m_instance", "m_distance", "m_amountScale", "m_forceRebuild"][..]),
+            (
+                "assembly_valheim.dll",
+                "LightLod",
+                &["m_lightLimit", "m_shadowLimit", "m_lightDistance", "m_shadowDistance", "m_light", "m_lights"][..],
+            ),
+            ("assembly_valheim.dll", "InstanceRenderer", &["m_shadowCasting", "<Instances>k__BackingField"][..]),
+            ("assembly_valheim.dll", "GraphicsSettingsManager", &["s_instance", "m_tesselationShaders"][..]),
+            ("assembly_valheim.dll", "WaterVolume", &["m_waterSurface", "<Instances>k__BackingField"][..]),
+            ("assembly_valheim.dll", "ZoneSystem", &["s_instance", "m_waterLevel"][..]),
         ] {
             let have = crate::compat::game_type_fields(game, asm, ty).unwrap_or_else(|| panic!("{ty} not in {asm}"));
             for f in fields {

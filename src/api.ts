@@ -437,6 +437,20 @@ export interface Graphics {
   deband: boolean;
   filmGrain: number;
   compareKey: string;
+  /** 0 game, 1 more, 2 ultra: fires and torches lighting and shadowing */
+  lightQuality: number;
+  /** multiplier on the game's grass amount; 0 = game's */
+  grassDensity: number;
+  grassShadows: boolean;
+  tessellation: boolean;
+  /** 0..1 */
+  textureSharpness: number;
+  /** 0 game, 1 realistic, 2 ultra */
+  water: number;
+  /** how far you see into water; 1 = game's */
+  waterClarity: number;
+  /** 0 game, 1 subtle, 2 cinematic */
+  motionBlur: number;
 }
 
 export interface GraphicsState {

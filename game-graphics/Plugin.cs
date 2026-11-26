@@ -71,6 +71,22 @@ namespace ModHeim.Graphics
         public float FilmGrain;
         /// toggles everything off and on in game, for before/after comparisons
         public string CompareKey = "F9";
+        /// 0 game, 1 more, 2 ultra: how many fires and torches light the scene and cast shadows
+        public int LightQuality;
+        /// multiplier on the game's grass amount; 0 = leave it
+        public float GrassDensity;
+        public bool GrassShadows;
+        /// the game's terrain tessellation (real 3D ground detail)
+        public bool Tessellation;
+        /// 0..1: sharper textures at a distance (negative mip bias)
+        public float TextureSharpness;
+        /// 0 game, 1 realistic, 2 ultra: mirror reflections of the world, glassier surface,
+        /// stronger refraction, smoother tessellated waves
+        public int Water;
+        /// multiplier on how far you see into the water; 1 = game's
+        public float WaterClarity = 1f;
+        /// 0 off (game), 1 subtle, 2 cinematic camera motion blur
+        public int MotionBlur;
 
         public static Settings Parse(string text)
         {
@@ -114,6 +130,14 @@ namespace ModHeim.Graphics
                     case "deband": s.Deband = Bool(v); break;
                     case "filmgrain": s.FilmGrain = Mathf.Clamp(Float(v), 0f, 0.6f); break;
                     case "comparekey": s.CompareKey = v; break;
+                    case "lightquality": s.LightQuality = Clamp(Int(v), 0, 2); break;
+                    case "grassdensity": s.GrassDensity = Mathf.Clamp(Float(v), 0f, 3f); break;
+                    case "grassshadows": s.GrassShadows = Bool(v); break;
+                    case "tessellation": s.Tessellation = Bool(v); break;
+                    case "texturesharpness": s.TextureSharpness = Mathf.Clamp01(Float(v)); break;
+                    case "water": s.Water = Clamp(Int(v), 0, 2); break;
+                    case "waterclarity": s.WaterClarity = Mathf.Clamp(Float(v), 0.5f, 3f); break;
+                    case "motionblur": s.MotionBlur = Clamp(Int(v), 0, 2); break;
                 }
             }
             return s;
@@ -173,11 +197,70 @@ namespace ModHeim.Graphics
         }
     }
 
+    /// Changes game fields (static, or on any object) and remembers every original value, so all of
+    /// it can be put back for the before/after key or when the plugin is switched off.
+    internal sealed class FieldTweaks
+    {
+        private readonly Dictionary<KeyValuePair<object, System.Reflection.FieldInfo>, object> _orig =
+            new Dictionary<KeyValuePair<object, System.Reflection.FieldInfo>, object>();
+
+        private static KeyValuePair<object, System.Reflection.FieldInfo> Key(object target, System.Reflection.FieldInfo f) =>
+            new KeyValuePair<object, System.Reflection.FieldInfo>(target ?? f, f);
+
+        public object Orig(object target, System.Reflection.FieldInfo f)
+        {
+            if (f == null) return null;
+            return _orig.TryGetValue(Key(target, f), out var v) ? v : f.GetValue(f.IsStatic ? null : target);
+        }
+
+        public float OrigFloat(object target, System.Reflection.FieldInfo f, float fallback)
+        {
+            var v = Orig(target, f);
+            return v is float x ? x : v is int i ? i : fallback;
+        }
+
+        /// true when the value actually changed
+        public bool Set(object target, System.Reflection.FieldInfo f, object value)
+        {
+            if (f == null) return false;
+            var on = f.IsStatic ? null : target;
+            if (!f.IsStatic && on == null) return false;
+            var k = Key(on, f);
+            if (!_orig.ContainsKey(k)) _orig[k] = f.GetValue(on);
+            object v = f.FieldType.IsEnum ? Enum.ToObject(f.FieldType, Convert.ToInt32(value, CultureInfo.InvariantCulture))
+                : Convert.ChangeType(value, f.FieldType, CultureInfo.InvariantCulture);
+            if (Equals(f.GetValue(on), v)) return false;
+            f.SetValue(on, v);
+            return true;
+        }
+
+        public void Restore()
+        {
+            foreach (var kv in _orig)
+            {
+                var f = kv.Key.Value;
+                var target = f.IsStatic ? null : kv.Key.Key;
+                if (target is UnityEngine.Object uo && uo == null) continue;
+                try { f.SetValue(target, kv.Value); } catch { }
+            }
+            _orig.Clear();
+        }
+
+        /// forget objects the game has destroyed
+        public void Prune()
+        {
+            var dead = new List<KeyValuePair<object, System.Reflection.FieldInfo>>();
+            foreach (var k in _orig.Keys)
+                if (k.Key is UnityEngine.Object uo && uo == null) dead.Add(k);
+            foreach (var k in dead) _orig.Remove(k);
+        }
+    }
+
     [BepInPlugin(Guid, "ModHeim Graphics", Version)]
     public class Plugin : BaseUnityPlugin
     {
         public const string Guid = "com.modheim.graphics";
-        public const string Version = "0.2.0";
+        public const string Version = "0.3.0";
         public const string SettingsFile = "ModHeim.Graphics.preset";
 
         private Settings _s = new Settings();
@@ -191,9 +274,7 @@ namespace ModHeim.Graphics
         private PostProcessingProfile _ours;
         private ReflectionProbe _probe;
         private float _nextApply;
-        private float _nextProbe;
         private bool _loggedCamera;
-        private bool _grassDone;
 
         // the game's own camera effects we push further
         private Tweak _sunShafts;
@@ -201,6 +282,20 @@ namespace ModHeim.Graphics
         private Tweak _clarity;
         private bool _clarityOurs;
         private bool _clarityMissing;
+
+        // world detail: lights, grass, tessellation, texture sharpness
+        private readonly FieldTweaks _fields = new FieldTweaks();
+        private readonly Dictionary<Light, LightShadowResolution> _lightRes = new Dictionary<Light, LightShadowResolution>();
+        private readonly Dictionary<Texture, float> _mipBias = new Dictionary<Texture, float>();
+        private readonly List<Material> _tessMats = new List<Material>();
+        private bool _tessGlobalWasOn;
+        private bool _tessOn;
+        private float _nextScan;
+        private Light _sun;
+        private LightShadows _sunShadows;
+        private LightShadowResolution _sunRes;
+        private float _sunNormalBias;
+        private bool _loggedDetail;
 
         // before/after compare
         private KeyCode _compareKey = KeyCode.F9;
@@ -217,7 +312,6 @@ namespace ModHeim.Graphics
         private ShadowResolution _shadowRes;
         private int _cascades;
         private bool _streaming;
-        private float _gameGrass = -1f;
 
         private void Awake()
         {
@@ -238,7 +332,7 @@ namespace ModHeim.Graphics
             {
                 Logger.LogWarning($"Live reload unavailable: {e.Message}");
             }
-            SceneManager.sceneLoaded += (_, __) => { _cam = null; _grassDone = false; };
+            SceneManager.sceneLoaded += (_, __) => { _cam = null; _sun = null; _nextScan = 0f; _fields.Prune(); };
             Logger.LogInfo($"Preset \"{_s.Preset}\" ({(_s.Enabled ? "on" : "off")})");
         }
 
@@ -278,7 +372,7 @@ namespace ModHeim.Graphics
             else
             {
                 _cam = null;
-                _grassDone = false;
+                _nextScan = 0f;
                 _nextApply = 0f;
             }
         }
@@ -313,7 +407,7 @@ namespace ModHeim.Graphics
                 Load();
                 Restore();
                 _cam = null;
-                _grassDone = false;
+                _nextScan = 0f;
                 _nextApply = 0f;
                 Logger.LogInfo($"Preset \"{_s.Preset}\" ({(_s.Enabled ? "on" : "off")})");
             }
@@ -329,11 +423,39 @@ namespace ModHeim.Graphics
                 try { Apply(); }
                 catch (Exception e) { Logger.LogError($"Apply failed: {e}"); _nextApply = now + 15f; }
             }
-            if (_probe != null && now >= _nextProbe)
+        }
+
+        private int _probeRender;
+
+        /// After the camera has moved this frame: place the reflection probe and keep it rendering.
+        private void LateUpdate()
+        {
+            if (!_s.Enabled || _comparing || _probe == null || _cam == null) return;
+            var cp = _cam.transform.position;
+            if (_s.Water > 0 && WaterLevel(out float level) && cp.y > level + 0.25f)
             {
-                _nextProbe = now + 0.35f;
-                _probe.RenderProbe();
+                // The camera's mirror image under the water plane: a cubemap seen from there,
+                // looked up along the reflected view ray, is exactly what a calm water surface
+                // reflects. So the water mirrors the real mountains, trees, boats and sky.
+                _probe.transform.position = new Vector3(cp.x, 2f * level - cp.y, cp.z);
             }
+            else
+            {
+                _probe.transform.position = cp;
+            }
+            // time-sliced: one face at a time, a new pass as soon as the last one finished
+            if (_probeRender == 0 || _probe.IsFinishedRendering(_probeRender))
+                _probeRender = _probe.RenderProbe();
+        }
+
+        private bool WaterLevel(out float level)
+        {
+            level = 30f;
+            var zs = AccessTools.TypeByName("ZoneSystem");
+            var inst = zs != null ? AccessTools.Field(zs, "s_instance")?.GetValue(null) : null;
+            if (inst == null || (inst is UnityEngine.Object o && o == null)) return false;
+            if (AccessTools.Field(zs, "m_waterLevel")?.GetValue(inst) is float f) level = f;
+            return true;
         }
 
         // ------------------------------------------------------------ apply
@@ -357,11 +479,30 @@ namespace ModHeim.Graphics
                 _clarity = Find(cam, "UnityStandardAssets.ImageEffects.ContrastEnhance");
                 _clarityMissing = false;
                 _loggedCamera = false;
+                _loggedDetail = false;
             }
             ApplyCameraEffects(cam);
             ApplyPost(cam);
             ApplySun();
-            if (!_grassDone) { _grassDone = true; ApplyGrass(); }
+            // world detail: each part on its own, so one game change can't stop the rest
+            bool scan = Time.unscaledTime >= _nextScan;
+            if (scan) _nextScan = Time.unscaledTime + 20f;
+            Try("lights", ApplyLights);
+            Try("grass", ApplyGrass);
+            Try("water", ApplyWater);
+            Try("tessellation", () => ApplyTessellation(scan));
+            if (scan) Try("texture sharpness", ApplyTextureSharpness);
+            if (scan && !_loggedDetail)
+            {
+                _loggedDetail = true;
+                Logger.LogInfo($"World detail: lights {(_s.LightQuality > 0 ? $"{_lightsSeen} upgraded" : "game")}, " +
+                    $"shadow cascades {(_s.ShadowQuality > 0 ? "sharpened" : "game")}, " +
+                    $"grass {(_s.GrassDensity > 0f ? $"x{_s.GrassDensity:0.#}" : "game")}{(_s.GrassShadows ? " with shadows" : "")}, " +
+                    $"tessellation {(_s.Tessellation ? $"on ({_tessMats.Count} materials)" : "game")}, " +
+                    $"textures {(_s.TextureSharpness > 0f ? $"{_mipBias.Count} sharpened" : "game")}, " +
+                    $"water {(_s.Water > 0 ? $"{(_s.Water >= 2 ? "ultra" : "realistic")} ({_waterUsage.Count} surfaces, mirror reflections {(_probe != null ? "on" : "off")})" : "game")}, " +
+                    $"motion blur {(_s.MotionBlur > 0 ? (_s.MotionBlur >= 2 ? "cinematic" : "subtle") : "game")}.");
+            }
         }
 
         private void SaveQuality()
@@ -375,8 +516,11 @@ namespace ModHeim.Graphics
             _shadowDistance = QualitySettings.shadowDistance;
             _shadowRes = QualitySettings.shadowResolution;
             _cascades = QualitySettings.shadowCascades;
+            _cascadeSplit = QualitySettings.shadowCascade4Split;
             _streaming = QualitySettings.streamingMipmapsActive;
         }
+
+        private Vector3 _cascadeSplit;
 
         private void ApplyQuality()
         {
@@ -400,15 +544,223 @@ namespace ModHeim.Graphics
                 QualitySettings.shadowResolution = _s.ShadowQuality >= 2 ? ShadowResolution.VeryHigh : ShadowResolution.High;
                 QualitySettings.shadowCascades = 4;
                 QualitySettings.shadowProjection = ShadowProjection.StableFit;
+                // A long shadow distance with Unity's default splits stretches the closest cascade
+                // over tens of metres and blurs every shadow near you. Fix the cascades in metres
+                // instead: ~8 m of razor-sharp shadow, then 25 m, 75 m, and the rest.
+                float d = Mathf.Max(QualitySettings.shadowDistance, 20f);
+                float a = Mathf.Clamp(8f / d, 0.015f, 0.25f);
+                float b = Mathf.Clamp(25f / d, a + 0.02f, 0.5f);
+                float c = Mathf.Clamp(75f / d, b + 0.05f, 0.85f);
+                var split = new Vector3(a, b, c);
+                if (QualitySettings.shadowCascade4Split != split) QualitySettings.shadowCascade4Split = split;
             }
+        }
+
+        /// Valheim's sun isn't always RenderSettings.sun, so look for the brightest directional light.
+        private Light FindSun()
+        {
+            if (_sun != null) return _sun;
+            var sun = RenderSettings.sun;
+            if (sun == null || sun.type != LightType.Directional)
+            {
+                sun = null;
+                foreach (var l in FindObjectsByType<Light>(FindObjectsSortMode.None))
+                    if (l.type == LightType.Directional && l.shadows != LightShadows.None && (sun == null || l.intensity > sun.intensity)) sun = l;
+            }
+            if (sun != null)
+            {
+                _sun = sun;
+                _sunShadows = sun.shadows;
+                _sunRes = sun.shadowResolution;
+                _sunNormalBias = sun.shadowNormalBias;
+            }
+            return sun;
         }
 
         private void ApplySun()
         {
-            var sun = RenderSettings.sun;
-            if (sun == null || _s.ShadowQuality == 0) return;
-            if (sun.shadows != LightShadows.None) sun.shadows = LightShadows.Soft;
-            sun.shadowResolution = _s.ShadowQuality >= 2 ? LightShadowResolution.VeryHigh : LightShadowResolution.High;
+            if (_s.ShadowQuality == 0) return;
+            var sun = FindSun();
+            if (sun == null) return;
+            if (sun.shadows != LightShadows.None && sun.shadows != LightShadows.Soft) sun.shadows = LightShadows.Soft;
+            var res = _s.ShadowQuality >= 2 ? LightShadowResolution.VeryHigh : LightShadowResolution.High;
+            if (sun.shadowResolution != res) sun.shadowResolution = res;
+            // sharper cascades need less normal bias, so shadows sit tight under objects
+            float nb = Mathf.Min(_sunNormalBias, _s.ShadowQuality >= 2 ? 0.25f : 0.35f);
+            if (!Mathf.Approximately(sun.shadowNormalBias, nb)) sun.shadowNormalBias = nb;
+        }
+
+        // ------------------------------------------------------------ world detail
+
+        private readonly HashSet<string> _failed = new HashSet<string>();
+
+        private void Try(string what, Action a)
+        {
+            if (_failed.Contains(what)) return;
+            try { a(); }
+            catch (Exception e)
+            {
+                // log once and stop trying that part, instead of spamming every 1.5 s
+                _failed.Add(what);
+                Logger.LogWarning($"{what} unavailable: {e.GetType().Name}: {e.Message}");
+            }
+        }
+
+        private static System.Collections.IEnumerable StaticList(Type t, string field)
+        {
+            var f = AccessTools.Field(t, field);
+            if (f != null && f.IsStatic) return f.GetValue(null) as System.Collections.IEnumerable;
+            var p = AccessTools.Property(t, field);
+            return p?.GetGetMethod(true)?.IsStatic == true ? p.GetValue(null, null) as System.Collections.IEnumerable : null;
+        }
+
+        /// More fires and torches light the scene and cast shadows, from further away.
+        private void ApplyLights()
+        {
+            if (_s.LightQuality == 0) return;
+            var t = AccessTools.TypeByName("LightLod");
+            if (t == null) return;
+            bool ultra = _s.LightQuality >= 2;
+            var lightLimit = AccessTools.Field(t, "m_lightLimit");
+            var shadowLimit = AccessTools.Field(t, "m_shadowLimit");
+            var lightDist = AccessTools.Field(t, "m_lightDistance");
+            var shadowDist = AccessTools.Field(t, "m_shadowDistance");
+            var lightField = AccessTools.Field(t, "m_light");
+            int wantLights = ultra ? 64 : 32, wantShadows = ultra ? 12 : 6;
+            float mul = ultra ? 2f : 1.5f;
+
+            void Limits(object target)
+            {
+                if (lightLimit != null) _fields.Set(target, lightLimit, Math.Max((int)_fields.OrigFloat(target, lightLimit, 0f), wantLights));
+                if (shadowLimit != null) _fields.Set(target, shadowLimit, Math.Max((int)_fields.OrigFloat(target, shadowLimit, 0f), wantShadows));
+            }
+            if (lightLimit?.IsStatic == true || shadowLimit?.IsStatic == true) Limits(null);
+
+            var list = StaticList(t, "m_lights");
+            if (list == null) return;
+            int n = 0;
+            foreach (var lod in list)
+            {
+                if (lod == null || (lod is UnityEngine.Object uo && uo == null)) continue;
+                n++;
+                if (lightLimit?.IsStatic == false || shadowLimit?.IsStatic == false) Limits(lod);
+                if (lightDist != null) _fields.Set(lod, lightDist, _fields.OrigFloat(lod, lightDist, 40f) * mul);
+                if (shadowDist != null) _fields.Set(lod, shadowDist, _fields.OrigFloat(lod, shadowDist, 20f) * mul);
+                if (lightField?.GetValue(lod) is Light l && l != null)
+                {
+                    if (!_lightRes.ContainsKey(l)) _lightRes[l] = l.shadowResolution;
+                    var res = ultra ? LightShadowResolution.VeryHigh : LightShadowResolution.High;
+                    if (l.shadowResolution != res) l.shadowResolution = res;
+                }
+            }
+            _lightsSeen = n;
+        }
+
+        private int _lightsSeen;
+
+        /// Thicker, further grass, optionally casting shadows.
+        private void ApplyGrass()
+        {
+            var type = AccessTools.TypeByName("ClutterSystem");
+            if (type == null) return;
+            var inst = AccessTools.Field(type, "m_instance")?.GetValue(null);
+            if (inst != null && (!(inst is UnityEngine.Object io) || io != null))
+            {
+                bool changed = false;
+                var dist = AccessTools.Field(type, "m_distance");
+                if (_s.GrassDistance > 0f && dist != null)
+                    changed |= _fields.Set(inst, dist, Mathf.Max(_fields.OrigFloat(inst, dist, 0f), _s.GrassDistance));
+                var amount = AccessTools.Field(type, "m_amountScale");
+                if (_s.GrassDensity > 0f && amount != null)
+                    changed |= _fields.Set(inst, amount, _fields.OrigFloat(inst, amount, 1f) * _s.GrassDensity);
+                // the game rebuilds its grass patches on its own when this is set
+                if (changed) _fields.Set(inst, AccessTools.Field(type, "m_forceRebuild"), true);
+            }
+
+            if (_s.GrassShadows)
+            {
+                var ir = AccessTools.TypeByName("InstanceRenderer");
+                var cast = ir != null ? AccessTools.Field(ir, "m_shadowCasting") : null;
+                var all = ir != null ? StaticList(ir, "Instances") : null;
+                if (cast != null && all != null)
+                    foreach (var r in all)
+                        if (r is UnityEngine.Object ro && ro != null) _fields.Set(r, cast, (int)ShadowCastingMode.On);
+            }
+        }
+
+        /// Valheim's own terrain tessellation: real 3D detail on the ground instead of a flat texture.
+        private void ApplyTessellation(bool rescan)
+        {
+            if (!_s.Tessellation) return;
+            const string kw = "TESSELATION_ON";
+            if (!_tessOn)
+            {
+                _tessOn = true;
+                _tessGlobalWasOn = Shader.IsKeywordEnabled(kw);
+            }
+            if (!Shader.IsKeywordEnabled(kw)) Shader.EnableKeyword(kw);
+            if (!rescan) return;
+            // and on the materials of the shaders the game marks as tessellating
+            var gsm = AccessTools.TypeByName("GraphicsSettingsManager");
+            var holder = gsm != null ? AccessTools.Field(gsm, "s_instance")?.GetValue(null) : null;
+            var shadersObj = gsm != null ? AccessTools.Field(gsm, "m_tesselationShaders")?.GetValue(holder) : null;
+            var shaders = new HashSet<Shader>();
+            if (shadersObj is System.Collections.IEnumerable e)
+                foreach (var o in e)
+                {
+                    if (o is Shader sh && sh != null) shaders.Add(sh);
+                    else if (o is Material m && m != null && m.shader != null) shaders.Add(m.shader);
+                }
+            if (shaders.Count == 0) return;
+            foreach (var m in Resources.FindObjectsOfTypeAll<Material>())
+            {
+                if (m == null || m.shader == null || !shaders.Contains(m.shader) || m.IsKeywordEnabled(kw)) continue;
+                m.EnableKeyword(kw);
+                _tessMats.Add(m);
+            }
+        }
+
+        /// Sharper textures at a distance: a negative mip bias picks a more detailed mip level.
+        /// TAA hides the shimmer this would otherwise add.
+        private void ApplyTextureSharpness()
+        {
+            if (_s.TextureSharpness <= 0f) return;
+            float bias = -0.8f * _s.TextureSharpness;
+            foreach (var t in Resources.FindObjectsOfTypeAll<Texture2D>())
+            {
+                if (t == null || t.mipmapCount <= 1) continue;
+                if (!_mipBias.ContainsKey(t)) _mipBias[t] = t.mipMapBias;
+                float want = _mipBias[t] + bias;
+                if (!Mathf.Approximately(t.mipMapBias, want)) t.mipMapBias = want;
+            }
+        }
+
+        private void RestoreDetail()
+        {
+            _fields.Restore();
+            RestoreWater();
+            foreach (var kv in _lightRes) if (kv.Key != null) kv.Key.shadowResolution = kv.Value;
+            _lightRes.Clear();
+            foreach (var kv in _mipBias) if (kv.Key != null) kv.Key.mipMapBias = kv.Value;
+            _mipBias.Clear();
+            if (_tessOn)
+            {
+                foreach (var m in _tessMats) if (m != null) m.DisableKeyword("TESSELATION_ON");
+                _tessMats.Clear();
+                if (!_tessGlobalWasOn) Shader.DisableKeyword("TESSELATION_ON");
+                _tessOn = false;
+            }
+            if (_sun != null)
+            {
+                _sun.shadows = _sunShadows;
+                _sun.shadowResolution = _sunRes;
+                _sun.shadowNormalBias = _sunNormalBias;
+            }
+            _sun = null;
+            // grass picks the game's values back up on its next rebuild
+            var type = AccessTools.TypeByName("ClutterSystem");
+            var inst = type != null ? AccessTools.Field(type, "m_instance")?.GetValue(null) : null;
+            if (inst != null) AccessTools.Field(type, "m_forceRebuild")?.SetValue(inst, true);
         }
 
         private void ApplyPost(Camera cam)
@@ -561,6 +913,18 @@ namespace ModHeim.Graphics
             // smooth gradients in skies and fog instead of visible bands
             if (_s.Deband) p.dithering.enabled = true;
 
+            // camera motion blur, like a real camera's shutter (180° is film standard)
+            if (_s.MotionBlur > 0)
+            {
+                var mb = p.motionBlur;
+                mb.enabled = true;
+                var ms = mb.settings;
+                ms.shutterAngle = _s.MotionBlur >= 2 ? 270f : 180f;
+                ms.sampleCount = _s.MotionBlur >= 2 ? 16 : 10;
+                ms.frameBlending = 0f;
+                mb.settings = ms;
+            }
+
             // film grain: fine, luminance-weighted, so it reads as texture rather than noise
             if (_s.FilmGrain > 0f)
             {
@@ -702,14 +1066,19 @@ namespace ModHeim.Graphics
         {
             if (_probe != null) Destroy(_probe.gameObject);
             _probe = null;
-            if (!_s.ReflectionProbe) return;
+            // realistic water needs the probe too: it's what the water reflects
+            if (!_s.ReflectionProbe && _s.Water == 0) return;
             var go = new GameObject("ModHeim Reflection Probe");
-            go.transform.SetParent(cam.transform, false);
+            // not parented: LateUpdate places it every frame (at the camera, or mirrored under the water)
+            go.transform.position = cam.transform.position;
             var probe = go.AddComponent<ReflectionProbe>();
             probe.mode = ReflectionProbeMode.Realtime;
             probe.refreshMode = ReflectionProbeRefreshMode.ViaScripting;
             probe.timeSlicingMode = ReflectionProbeTimeSlicingMode.IndividualFaces;
-            probe.resolution = Mathf.ClosestPowerOfTwo(_s.ProbeResolution);
+            int res = Mathf.ClosestPowerOfTwo(_s.ProbeResolution);
+            if (_s.Water >= 2) res = Mathf.Max(res, 512);
+            else if (_s.Water == 1) res = Mathf.Max(res, 256);
+            probe.resolution = res;
             probe.size = new Vector3(3000f, 3000f, 3000f);
             probe.importance = 1000;
             probe.boxProjection = false;
@@ -718,31 +1087,88 @@ namespace ModHeim.Graphics
             probe.nearClipPlane = 0.3f;
             probe.farClipPlane = 800f;
             probe.clearFlags = ReflectionProbeClearFlags.Skybox;
-            // skip UI and the player's own close-up meshes
-            probe.cullingMask = cam.cullingMask & ~(1 << 5);
+            // skip UI, and the water itself (a mirror can't reflect its own surface)
+            int mask = cam.cullingMask & ~(1 << 5);
+            int water = LayerMask.NameToLayer("Water");
+            if (water >= 0) mask &= ~(1 << water);
+            probe.cullingMask = mask;
             probe.blendDistance = 0f;
             _probe = probe;
-            _nextProbe = 0f;
+            _probeRender = 0;
         }
 
-        private void ApplyGrass()
+        // ------------------------------------------------------------ water
+
+        private readonly Dictionary<Material, Dictionary<string, float>> _waterSaved = new Dictionary<Material, Dictionary<string, float>>();
+        private readonly Dictionary<Renderer, ReflectionProbeUsage> _waterUsage = new Dictionary<Renderer, ReflectionProbeUsage>();
+        private string _waterReport;
+
+        /// Valheim's water shader (Custom/Water) at settings closer to real water: a glassy surface
+        /// that mirrors the world through the probe, stronger refraction of what's underneath,
+        /// clearer depth, and finer tessellation for smoother wave shapes. Wave heights are left
+        /// alone: boats and swimming follow the game's own wave maths.
+        private void ApplyWater()
         {
-            if (_s.GrassDistance <= 0f) return;
-            try
+            if (_s.Water == 0) return;
+            var t = AccessTools.TypeByName("WaterVolume");
+            var surf = t != null ? AccessTools.Field(t, "m_waterSurface") : null;
+            var list = t != null ? StaticList(t, "Instances") : null;
+            if (surf == null || list == null) return;
+            bool ultra = _s.Water >= 2;
+            var report = new List<string>();
+            foreach (var wv in list)
             {
-                var type = AccessTools.TypeByName("ClutterSystem");
-                if (type == null) return;
-                var inst = AccessTools.Field(type, "m_instance")?.GetValue(null);
-                var dist = AccessTools.Field(type, "m_distance");
-                if (inst == null || dist == null) return;
-                if (_gameGrass < 0f) _gameGrass = (float)dist.GetValue(inst);
-                dist.SetValue(inst, Mathf.Max(_gameGrass, _s.GrassDistance));
-                AccessTools.Method(type, "ResetGrass")?.Invoke(inst, null);
+                if (!(wv is UnityEngine.Object o) || o == null) continue;
+                if (!(surf.GetValue(wv) is Renderer r) || r == null) continue;
+                if (!_waterUsage.ContainsKey(r)) _waterUsage[r] = r.reflectionProbeUsage;
+                if (r.reflectionProbeUsage != ReflectionProbeUsage.BlendProbesAndSkybox) r.reflectionProbeUsage = ReflectionProbeUsage.BlendProbesAndSkybox;
+                foreach (var m in r.sharedMaterials)
+                {
+                    if (m == null || m.shader == null || m.shader.name.IndexOf("Water", StringComparison.OrdinalIgnoreCase) < 0) continue;
+                    WaterFloat(m, "_Glossiness", g => Mathf.Max(g, ultra ? 0.97f : 0.93f), report);
+                    WaterFloat(m, "_RefractionScale", g => g * (ultra ? 1.6f : 1.3f), report);
+                    WaterFloat(m, "_RefractionMax", g => g * (ultra ? 1.4f : 1.2f), report);
+                    WaterFloat(m, "_DepthFade", g => g * _s.WaterClarity, report);
+                    WaterFloat(m, "_Tess", g => Mathf.Min(g * (ultra ? 2f : 1.5f), 64f), report);
+                    WaterFloat(m, "_VisibleMaxDistance", g => g * (ultra ? 1.6f : 1.3f), report);
+                }
             }
-            catch (Exception e)
+            if (_waterReport == null && report.Count > 0)
             {
-                Logger.LogWarning($"Grass distance not changed: {e.Message}");
+                _waterReport = string.Join(", ", report.ToArray());
+                Logger.LogInfo($"Water: {_waterReport}");
             }
+        }
+
+        private void WaterFloat(Material m, string name, Func<float, float> f, List<string> report)
+        {
+            var sh = m.shader;
+            int idx = sh.FindPropertyIndex(name);
+            if (idx < 0) return;
+            var ty = sh.GetPropertyType(idx);
+            if (ty != UnityEngine.Rendering.ShaderPropertyType.Float && ty != UnityEngine.Rendering.ShaderPropertyType.Range) return;
+            if (!_waterSaved.TryGetValue(m, out var saved)) _waterSaved[m] = saved = new Dictionary<string, float>();
+            if (!saved.TryGetValue(name, out float orig)) saved[name] = orig = m.GetFloat(name);
+            float want = f(orig);
+            if (ty == UnityEngine.Rendering.ShaderPropertyType.Range)
+            {
+                var lim = sh.GetPropertyRangeLimits(idx);
+                want = Mathf.Clamp(want, lim.x, lim.y);
+            }
+            if (!Mathf.Approximately(m.GetFloat(name), want)) m.SetFloat(name, want);
+            if (_waterReport == null && report.Count < 12 && !report.Exists(x => x.StartsWith(name)))
+                report.Add($"{name} {orig:0.###}→{want:0.###}");
+        }
+
+        private void RestoreWater()
+        {
+            foreach (var kv in _waterSaved)
+                if (kv.Key != null)
+                    foreach (var p in kv.Value) kv.Key.SetFloat(p.Key, p.Value);
+            _waterSaved.Clear();
+            foreach (var kv in _waterUsage) if (kv.Key != null) kv.Key.reflectionProbeUsage = kv.Value;
+            _waterUsage.Clear();
+            _waterReport = null;
         }
 
         // ------------------------------------------------------------ restore
@@ -766,24 +1192,12 @@ namespace ModHeim.Graphics
                 QualitySettings.shadowDistance = _shadowDistance;
                 QualitySettings.shadowResolution = _shadowRes;
                 QualitySettings.shadowCascades = _cascades;
+                QualitySettings.shadowCascade4Split = _cascadeSplit;
                 QualitySettings.streamingMipmapsActive = _streaming;
                 _savedQuality = false;
             }
-            if (_gameGrass >= 0f)
-            {
-                try
-                {
-                    var type = AccessTools.TypeByName("ClutterSystem");
-                    var inst = AccessTools.Field(type, "m_instance")?.GetValue(null);
-                    if (inst != null)
-                    {
-                        AccessTools.Field(type, "m_distance")?.SetValue(inst, _gameGrass);
-                        AccessTools.Method(type, "ResetGrass")?.Invoke(inst, null);
-                    }
-                }
-                catch { }
-                _gameGrass = -1f;
-            }
+            try { RestoreDetail(); }
+            catch (Exception e) { Logger.LogWarning($"Restoring world detail: {e.Message}"); }
         }
     }
 }

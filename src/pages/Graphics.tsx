@@ -11,27 +11,31 @@ const BASE: Graphics = {
   anisotropic: 0, lodBias: 0, shadowDistance: 0, shadowQuality: 0, ambientOcclusion: 0, antiAliasing: 0, sharpen: 0.3,
   tonemapping: "Game", exposure: 0, contrast: 1, saturation: 1, temperature: 0, bloom: 1, vignette: -1, autoExposure: false,
   grassDistance: 0, grade: "Off", gradeStrength: 0.5, clarity: 0, godRays: 0, deband: false, filmGrain: 0, compareKey: "F9",
+  lightQuality: 0, grassDensity: 0, grassShadows: false, tessellation: false, textureSharpness: 0,
+  water: 0, waterClarity: 1, motionBlur: 0,
 };
 
 const ULTRA: Graphics = {
   ...BASE, preset: "Ultra", reflections: 3, reflectionProbe: true, probeResolution: 256, fullTextures: true, anisotropic: 16,
   lodBias: 2.5, shadowDistance: 200, shadowQuality: 2, ambientOcclusion: 2, antiAliasing: 1, sharpen: 0.35,
   tonemapping: "ACES", exposure: 0.1, contrast: 1.08, saturation: 1.08, bloom: 1.15, vignette: 0.2, autoExposure: true,
-  grassDistance: 120, godRays: 1, deband: true,
+  grassDistance: 120, godRays: 1, deband: true, lightQuality: 1, grassDensity: 1.3, tessellation: true, textureSharpness: 0.4,
+  water: 1, waterClarity: 1.3,
 };
 
-/** Everything at once: in-engine reflections and AO plus a full film grade, beyond what a screen-only preset can reach. */
+/** Everything at once: real world detail first (lights, shadows, ground, grass), then a light film grade. */
 const BEYOND: Graphics = {
-  ...ULTRA, preset: "Beyond", probeResolution: 512, lodBias: 3, shadowDistance: 300, grassDistance: 150, sharpen: 0.4,
-  grade: "Cinematic", gradeStrength: 0.6, clarity: 0.35, godRays: 2, filmGrain: 0.12, contrast: 1.06, saturation: 1.05,
-  bloom: 1.25, vignette: 0.25,
+  ...ULTRA, preset: "Beyond", probeResolution: 512, lodBias: 3, shadowDistance: 250, grassDistance: 150, sharpen: 0.4,
+  grade: "Cinematic", gradeStrength: 0.4, clarity: 0.3, godRays: 2, filmGrain: 0.1, contrast: 1.04, saturation: 1.04,
+  bloom: 1.2, vignette: 0.2, lightQuality: 2, grassDensity: 1.6, grassShadows: true, textureSharpness: 0.6,
+  water: 2, waterClarity: 1.6,
 };
 
 const PRESETS: { id: string; label: string; hint: string; cost: string; g: Graphics; star?: boolean }[] = [
   {
     id: "Beyond",
     label: "Beyond",
-    hint: "Everything ModHeim can do: Ultra plus a teal-and-amber film grade, epic god rays, clarity, smooth skies and fine grain.",
+    hint: "Everything ModHeim can do: mirror-like water that reflects the world, every fire casting shadows, razor-sharp shadows, 3D ground, thick shadowed grass, sharper textures and epic god rays.",
     cost: "Heavy",
     g: BEYOND,
     star: true,
@@ -42,12 +46,12 @@ const PRESETS: { id: string; label: string; hint: string; cost: string; g: Graph
     hint: "Sharper textures, light reflections and filmic colour. Little impact on frame rate.",
     cost: "Light",
     g: { ...BASE, preset: "Balanced", reflections: 1, fullTextures: true, anisotropic: 8, lodBias: 1.5, shadowQuality: 1,
-      tonemapping: "ACES", contrast: 1.04, saturation: 1.04 },
+      tonemapping: "ACES", contrast: 1.04, saturation: 1.04, textureSharpness: 0.3, lightQuality: 1 },
   },
   {
     id: "Ultra",
     label: "Ultra (AAA)",
-    hint: "Real-time reflections everywhere, full textures, long soft shadows, strong AO, TAA and auto exposure.",
+    hint: "3D ground, more fires lighting the world, sharp long shadows, denser grass, reflections, strong AO and TAA.",
     cost: "Heavy",
     g: ULTRA,
   },
@@ -57,7 +61,7 @@ const PRESETS: { id: string; label: string; hint: string; cost: string; g: Graph
     hint: "Ultra with a film look: warmer light, deeper contrast, glowing highlights and a soft vignette.",
     cost: "Heavy",
     g: { ...ULTRA, preset: "Cinematic", temperature: 4, contrast: 1.12, saturation: 0.94, bloom: 1.4, vignette: 0.35, sharpen: 0.2,
-      grade: "Golden", gradeStrength: 0.55, godRays: 2, filmGrain: 0.18 },
+      grade: "Golden", gradeStrength: 0.55, godRays: 2, filmGrain: 0.18, motionBlur: 1 },
   },
   {
     id: "Vivid",
@@ -65,7 +69,8 @@ const PRESETS: { id: string; label: string; hint: string; cost: string; g: Graph
     hint: "Balanced quality with richer colour and punchier contrast.",
     cost: "Light",
     g: { ...BASE, preset: "Vivid", reflections: 2, fullTextures: true, anisotropic: 16, lodBias: 2, shadowQuality: 1,
-      ambientOcclusion: 1, tonemapping: "ACES", contrast: 1.12, saturation: 1.25, bloom: 1.1, clarity: 0.25, deband: true },
+      ambientOcclusion: 1, tonemapping: "ACES", contrast: 1.12, saturation: 1.25, bloom: 1.1, clarity: 0.25, deband: true,
+      textureSharpness: 0.3, lightQuality: 1, grassDensity: 1.2 },
   },
 ];
 
@@ -166,9 +171,10 @@ export function GraphicsPage() {
       <div className="notice info">
         <Info />
         <span>
-          Works inside the game's renderer, not on top of the finished picture like a ReShade preset. So it can add
-          real reflections, deeper ambient occlusion, sharper shadows and full textures, and then the film grade, god rays and
-          clarity on top. It can't add textures sharper than the ones Valheim ships with.{" "}
+          Works inside the game's renderer, not on top of the finished picture like a ReShade preset. So it changes the world
+          itself: 3D tessellated ground, fires and torches that light and shadow everything around them, crisp long
+          shadows, thicker grass with shadows and sharper textures. The film grade and god rays go on top. It can't add
+          textures sharper than the ones Valheim ships with.{" "}
           {running ? "Changes apply live while you play." : "Changes apply the next time you play modded."} Press{" "}
           <kbd>{g.compareKey}</kbd> in game to compare with Valheim's own look.
         </span>
@@ -220,6 +226,33 @@ export function GraphicsPage() {
           </Row>
         )}
 
+        <h3 className="gfx-h">World detail</h3>
+        <Row title="3D ground (tessellation)" desc="Valheim's own terrain tessellation: stones, roots and mud get real depth instead of a flat painted texture.">
+          <Switch label="3D ground (tessellation)" on={g.tessellation} onChange={(v) => set({ tessellation: v })} />
+        </Row>
+        <Row title="Fires & torches" desc="More lights glow at once and more of them cast shadows, from further away, so camps and halls are lit for real.">
+          <Seg label="Fires and torches" value={g.lightQuality} onChange={(v) => set({ lightQuality: v })} options={[[0, "Game"], [1, "More"], [2, "Ultra"]]} />
+        </Row>
+        <Row title="Grass amount" desc="Thicker meadows and forest floors. 0 keeps the game's setting.">
+          <Slider label="Grass amount" value={g.grassDensity} min={0} max={2.5} step={0.1} onChange={(v) => set({ grassDensity: v })} format={(v) => (v ? `${v.toFixed(1)}×` : "Game")} />
+        </Row>
+        <Row title="Grass shadows" desc="Grass and plants cast shadows on the ground. Heavy on the GPU.">
+          <Switch label="Grass shadows" on={g.grassShadows} onChange={(v) => set({ grassShadows: v })} />
+        </Row>
+        <Row title="Texture sharpness" desc="Ground, walls and armour keep their detail further away instead of turning to mush.">
+          <Slider label="Texture sharpness" value={g.textureSharpness} min={0} max={1} step={0.05} onChange={(v) => set({ textureSharpness: v })} format={(v) => (v ? pct(v) : "Game")} />
+        </Row>
+
+        <h3 className="gfx-h">Water</h3>
+        <Row title="Water" desc="Realistic: a glassy surface that mirrors the actual mountains, trees, boats and sky, with stronger refraction and smoother waves. Ultra sharpens the reflections. Wave heights stay the game's, so boats sail the same.">
+          <Seg label="Water" value={g.water} onChange={(v) => set({ water: v })} options={[[0, "Game"], [1, "Realistic"], [2, "Ultra"]]} />
+        </Row>
+        {g.water > 0 && (
+          <Row title="Water clarity" desc="How far you can see down into lakes and shallows.">
+            <Slider label="Water clarity" value={g.waterClarity} min={0.5} max={2.5} step={0.1} onChange={(v) => set({ waterClarity: v })} format={(v) => (Math.abs(v - 1) < 0.01 ? "Game" : `${v.toFixed(1)}×`)} />
+          </Row>
+        )}
+
         <h3 className="gfx-h">Textures & detail</h3>
         <Row title="Full-resolution textures" desc="Always load every texture at full size, ignoring the game's texture quality and streaming.">
           <Switch label="Full-resolution textures" on={g.fullTextures} onChange={(v) => set({ fullTextures: v })} />
@@ -235,7 +268,7 @@ export function GraphicsPage() {
         </Row>
 
         <h3 className="gfx-h">Shadows & light</h3>
-        <Row title="Shadow quality" desc="Very high uses the sharpest shadow maps with four cascades and soft edges.">
+        <Row title="Shadow quality" desc="Sharper shadow maps, soft edges, and cascades laid out so the shadows right around you stay crisp even with a long shadow distance.">
           <Seg label="Shadow quality" value={g.shadowQuality} onChange={(v) => set({ shadowQuality: v })} options={[[0, "Game"], [1, "High"], [2, "Very high"]]} />
         </Row>
         <Row title="Shadow distance" desc="0 keeps the game's setting.">
@@ -291,6 +324,9 @@ export function GraphicsPage() {
         </Row>
         <Row title="Film grain" desc="A fine grain, mostly in mid-tones, that makes the picture feel less digital.">
           <Slider label="Film grain" value={g.filmGrain} min={0} max={0.4} step={0.02} onChange={(v) => set({ filmGrain: v })} format={(v) => (v ? pct(v) : "Off")} />
+        </Row>
+        <Row title="Motion blur" desc="Blur on fast camera turns, like a real camera's shutter. Subtle is the film standard.">
+          <Seg label="Motion blur" value={g.motionBlur} onChange={(v) => set({ motionBlur: v })} options={[[0, "Game"], [1, "Subtle"], [2, "Cinematic"]]} />
         </Row>
 
         <h3 className="gfx-h">Compare</h3>

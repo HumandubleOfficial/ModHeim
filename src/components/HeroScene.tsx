@@ -306,6 +306,34 @@ function sceneSvg(phase: Phase, weather: Weather) {
 </svg>`;
 }
 
+/** Size of one art pixel in device pixels: about 2 CSS pixels, always a whole number. */
+function artPixel(dpr: number) {
+  return Math.max(2, Math.round(2 * dpr));
+}
+
+const BAYER4 = [0, 8, 2, 10, 12, 4, 14, 6, 3, 11, 1, 9, 15, 7, 13, 5];
+
+/**
+ * Ordered (Bayer) dithering to a reduced colour depth, the way hand-made pixel art shades skies
+ * and soft edges: gradients become a fine, even pattern instead of smeared in-between colours.
+ */
+function ditherCanvas(ctx: CanvasRenderingContext2D, w: number, h: number, levels = 48) {
+  const img = ctx.getImageData(0, 0, w, h);
+  const d = img.data;
+  const step = 255 / (levels - 1);
+  for (let y = 0; y < h; y++) {
+    for (let x = 0; x < w; x++) {
+      const i = (y * w + x) * 4;
+      const t = (BAYER4[(y & 3) * 4 + (x & 3)] + 0.5) / 16 - 0.5;
+      for (let c = 0; c < 3; c++) {
+        const v = d[i + c] / step + t;
+        d[i + c] = Math.max(0, Math.min(255, Math.round(v) * step));
+      }
+    }
+  }
+  ctx.putImageData(img, 0, 0);
+}
+
 /** Map a scene coordinate to the element, with the same "cover from the bottom" crop as the art. */
 function mapper(w: number, h: number) {
   const s = Math.max(w / W, h / H);
@@ -354,13 +382,20 @@ export function HeroScene({ phase, weather }: { phase: Phase; weather: Weather }
     const draw = () => {
       const { width, height } = el.getBoundingClientRect();
       if (!width || !height || !img.complete) return;
-      const px = 3; // one game "pixel" = 3 screen pixels
-      canvas.width = Math.ceil(width / px);
-      canvas.height = Math.ceil(height / px);
-      const ctx = canvas.getContext("2d")!;
+      const dpr = window.devicePixelRatio || 1;
+      // One art pixel is a whole number of *device* pixels, so every pixel comes out the same
+      // size on any display scaling (125%, 150%...), instead of an uneven mix of 3s and 4s.
+      const P = artPixel(dpr);
+      canvas.width = Math.ceil((width * dpr) / P);
+      canvas.height = Math.ceil((height * dpr) / P);
+      canvas.style.width = `${(canvas.width * P) / dpr}px`;
+      canvas.style.height = `${(canvas.height * P) / dpr}px`;
+      const ctx = canvas.getContext("2d", { willReadFrequently: true })!;
       ctx.imageSmoothingEnabled = true;
+      ctx.imageSmoothingQuality = "high";
       const m = mapper(canvas.width, canvas.height);
       ctx.drawImage(img, m.x(0), m.y(0), W * m.s, H * m.s);
+      ditherCanvas(ctx, canvas.width, canvas.height);
     };
     img.onload = draw;
     img.src = url;
@@ -426,6 +461,11 @@ export function HeroScene({ phase, weather }: { phase: Phase; weather: Weather }
           size: Math.max(1.5, (1 + Math.random() * 1.4) * m.s * 1.6),
         });
       }
+      // everything below is drawn in device pixels, snapped to the art's pixel grid, so embers,
+      // snow and rain are made of the same size pixels as the landscape
+      const P = artPixel(dpr);
+      const gx = (v: number) => Math.floor((v * dpr) / P) * P;
+      ctx.setTransform(1, 0, 0, 1, 0, 0);
       embers = embers.filter((e) => e.life < e.max);
       for (const e of embers) {
         e.life += dt;
@@ -433,8 +473,9 @@ export function HeroScene({ phase, weather }: { phase: Phase; weather: Weather }
         e.y += e.vy * dt;
         const a = 1 - e.life / e.max;
         ctx.fillStyle = `rgba(255,${Math.round(150 + 80 * a)},70,${a})`;
-        const s = Math.round(e.size);
-        ctx.fillRect(Math.round(e.x), Math.round(e.y), s, s);
+        // young embers are 2×2 art pixels, cooling ones 1×1
+        const s = e.size > 2.2 && a > 0.45 ? 2 * P : P;
+        ctx.fillRect(gx(e.x), gx(e.y), s, s);
       }
 
       // rain streaks or pixel snowflakes over everything
@@ -456,22 +497,22 @@ export function HeroScene({ phase, weather }: { phase: Phase; weather: Weather }
           });
         }
         if (kind === "rain") {
-          ctx.strokeStyle = "rgba(190,210,230,0.32)";
-          ctx.lineWidth = 1;
-          ctx.beginPath();
+          // pixel rain: short slanted streaks built from art pixels, not blurry lines
+          ctx.fillStyle = "rgba(190,210,230,0.3)";
           for (const d of drops) {
             d.y += d.v * dt;
             d.x -= d.v * 0.18 * dt;
-            ctx.moveTo(d.x, d.y);
-            ctx.lineTo(d.x + d.s * 0.18, d.y - d.s);
+            const len = Math.max(2, Math.round((d.s * dpr) / P));
+            const x0 = gx(d.x), y0 = gx(d.y);
+            for (let k = 0; k < len; k++) ctx.fillRect(x0 + Math.round(k * 0.2) * P, y0 - k * P, P, P);
           }
-          ctx.stroke();
         } else {
           ctx.fillStyle = "rgba(240,246,250,0.85)";
           for (const d of drops) {
             d.y += d.v * dt;
             d.x += Math.sin(t * 0.8 + d.ph) * 18 * dt - 8 * dt;
-            ctx.fillRect(Math.round(d.x), Math.round(d.y), d.s, d.s);
+            const s = d.s >= 3 ? 2 * P : P;
+            ctx.fillRect(gx(d.x), gx(d.y), s, s);
           }
         }
         for (const d of drops) {
@@ -481,6 +522,7 @@ export function HeroScene({ phase, weather }: { phase: Phase; weather: Weather }
           }
         }
       }
+      ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
       raf = requestAnimationFrame(loop);
     };
     raf = requestAnimationFrame(loop);
