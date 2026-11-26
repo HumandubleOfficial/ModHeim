@@ -1,8 +1,9 @@
 import { open, save } from "@tauri-apps/plugin-dialog";
-import { ArrowDownToLine, Boxes, Check, Copy, FileDown, FileUp, FolderOpen, KeyRound, Pencil, Plus, Share2, Trash2, Wrench } from "lucide-react";
+import { ArrowDownToLine, Boxes, Check, Copy, FileDown, FileUp, FolderOpen, History, KeyRound, Pencil, Plus, Share2, Trash2, Wrench } from "lucide-react";
 import { api, timeAgo, type ImportResult, type ProfileSummary } from "../api";
 import { useState } from "react";
 import { ImportFromManager } from "../components/ImportFromManager";
+import { RestorePoints } from "../components/RestorePoints";
 import { useAction, useProfiles, useSettings } from "../hooks";
 import { useUi } from "../store";
 import { PageHead } from "../components/Chrome";
@@ -34,6 +35,7 @@ export function ProfilesPage() {
   const profiles = useProfiles().data ?? [];
   const { toast, browseIn } = useUi();
   const [fromManager, setFromManager] = useState(false);
+  const [snapshots, setSnapshots] = useState<string | null>(null);
 
   const create = useAction(api.createProfile, { success: (p) => `Created "${p.name}"` });
   const activate = useAction(api.setActiveProfile, { success: (s) => `"${s.activeProfile}" is now active` });
@@ -168,6 +170,7 @@ export function ProfilesPage() {
         }
       />
       {fromManager && <ImportFromManager onClose={() => setFromManager(false)} />}
+      {snapshots && <RestorePoints profile={snapshots} onClose={() => setSnapshots(null)} />}
       <div className="grid cols-3">
         {profiles.map((p) => {
           const active = p.name === settings?.activeProfile;
@@ -211,6 +214,9 @@ export function ProfilesPage() {
                 </button>
                 <button className="btn sm ghost icon" title="Share as code" aria-label="Share" onClick={() => onShare(p)}>
                   <Share2 />
+                </button>
+                <button className="btn sm ghost icon" title="Restore points" aria-label="Restore points" onClick={() => setSnapshots(p.name)}>
+                  <History />
                 </button>
                 <button
                   className="btn sm ghost icon"

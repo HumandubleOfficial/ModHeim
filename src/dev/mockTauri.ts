@@ -18,7 +18,27 @@ const settings = {
   showDeprecated: false,
   background: null,
   backdrop: (localStorage.getItem("mock.backdrop") as string) || "aurora",
+  launchGuard: true,
+  backupBeforeLaunch: true,
+  backupKeep: 10,
+  sounds: true,
+  ambience: true,
+  volume: 0.6,
 };
+
+const mockLog = [
+  "[Message:   BepInEx] BepInEx 5.4.23.2 - valheim",
+  "[Info   :   BepInEx] Running under Unity v2022.3.62",
+  "[Info   :   BepInEx] Loading [Jotunn 2.30.1]",
+  "[Info   :   BepInEx] Loading [MyLittleUI 1.4.2]",
+  "[Warning:   BepInEx] Skipping [ZenUI 1.2.0] because a newer version exists",
+  "[Message:Jotunn] Initializing Jotunn",
+  "[Error  : Unity Log] MissingFieldException: Field not found: InstanceRenderer.m_frustumCull",
+  "Stack trace:",
+  "  at OldPatch.Patches.Render.Postfix () [0x00000] in <00000000000000000000000000000000>:0",
+  "[Info   : Unity Log] Game version 1.0.30",
+  ...Array.from({ length: 400 }, (_, i) => `[Info   : Unity Log] Loading zone ${i}`),
+].join("\n") + "\n";
 
 const mod = (fullName: string, version: string, description: string, enabled = true) => {
   const [owner, name] = fullName.split("-");
@@ -199,6 +219,41 @@ function handle(cmd: string, args: Args): unknown {
       return { name: (args?.name as string) || "Modpack", installed: 23, warnings: [] };
     case "set_active_profile":
       return settings;
+    case "launch_check":
+      return {
+        profile: settings.activeProfile, gameVersion: "1.0.30.0",
+        issues: [
+          { fullName: "Someone-OldPatch", name: "Old Patch", missing: ["InstanceRenderer.m_frustumCull", "InstanceRenderer.m_dirtyBounds", "SmokeRenderer.Instance", "type ZSteamSocket"], errors: 435, example: "MissingFieldException: Field not found: InstanceRenderer.m_frustumCull" },
+          { fullName: "Someone-Graphics", name: "Graphics Tweaks", missing: ["SmokeRenderer.m_smokeBallSize"], errors: 0, example: null },
+        ],
+      };
+    case "read_log": {
+      const from = (args?.from as number) ?? 0;
+      return from === 0 ? { text: mockLog, next: mockLog.length, reset: false, exists: true } : { text: "", next: from, reset: false, exists: true };
+    }
+    case "crash_report":
+      return "ModHeim crash report\n=====================\n(mock)";
+    case "list_snapshots":
+      return [
+        { id: "20261125-201500", profile: "Default", created: iso(0.05), reason: "Before updating 3 mods", modCount: 22, bytes: 48_000_000 },
+        { id: "20261124-180000", profile: "Default", created: iso(1.1), reason: "Before uninstalling Epic Loot", modCount: 23, bytes: 52_000_000 },
+      ];
+    case "create_snapshot":
+      return { id: "x", profile: "Default", created: iso(0), reason: "Saved by you", modCount: 22, bytes: 48_000_000 };
+    case "list_backups":
+      return {
+        folder: "C:\Users\you\AppData\Roaming\ModHeim\backups",
+        backups: [
+          { file: "Valheim saves 2026-11-25 18-12-03.zip", created: iso(0.1), reason: "Before playing Mods", bytes: 9_300_000, files: 131, worlds: ["MeandDadworld", "TheWorld"] },
+          { file: "Valheim saves 2026-11-23 20-40-10.zip", created: iso(2), reason: "Backed up by you", bytes: 9_100_000, files: 128, worlds: ["MeandDadworld", "TheWorld"] },
+        ],
+        sources: [
+          { label: "worlds_local", path: "C:\Users\you\AppData\LocalLow\IronGate\Valheim\worlds_local", files: 21, bytes: 1_050_000 },
+          { label: "xbox_saves", path: "C:\Users\you\AppData\Local\Packages\CoffeeStainStudios.Valheim\SystemAppData\wgs", files: 110, bytes: 26_000_000 },
+        ],
+      };
+    case "create_backup":
+      return { file: "new.zip", created: iso(0), reason: "Backed up by you", bytes: 9_300_000, files: 131, worlds: [] };
     case "plugin:event|listen":
       return 1;
     default:

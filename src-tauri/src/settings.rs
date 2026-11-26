@@ -69,6 +69,15 @@ pub struct Settings {
     pub background: Option<String>,
     /// Animated backdrop behind the pages: aurora | forest | embers | plain
     pub backdrop: String,
+    /// Check mods against the game version before a modded launch.
+    pub launch_guard: bool,
+    /// Back up worlds and characters before modded launches (only when they changed).
+    pub backup_before_launch: bool,
+    pub backup_keep: u32,
+    pub sounds: bool,
+    pub ambience: bool,
+    /// 0..1
+    pub volume: f32,
 }
 
 impl Default for Settings {
@@ -84,6 +93,12 @@ impl Default for Settings {
             show_deprecated: false,
             background: None,
             backdrop: "aurora".into(),
+            launch_guard: true,
+            backup_before_launch: true,
+            backup_keep: 10,
+            sounds: true,
+            ambience: true,
+            volume: 0.6,
         }
     }
 }

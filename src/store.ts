@@ -1,7 +1,7 @@
 import { create } from "zustand";
-import type { Progress } from "./api";
+import type { ErrorStorm, Progress } from "./api";
 
-export type Page = "play" | "news" | "themes" | "browse" | "installed" | "profiles" | "servers" | "settings" | "modsettings" | "health";
+export type Page = "play" | "news" | "themes" | "browse" | "installed" | "profiles" | "servers" | "settings" | "modsettings" | "health" | "log" | "backups";
 
 export interface Toast {
   id: number;
@@ -25,6 +25,14 @@ interface UiState {
   setProgress: (p: Progress | null) => void;
   busy: string | null;
   setBusy: (label: string | null) => void;
+  /** Nonstop errors seen while the game runs (newest last). */
+  storms: ErrorStorm[];
+  addStorm: (s: ErrorStorm) => void;
+  dismissStorm: (message: string) => void;
+  /** Mods to turn off as soon as the game closes ([profile, fullName]). */
+  offWhenClosed: [string, string][];
+  queueOff: (profile: string, fullNames: string[]) => void;
+  clearOff: () => void;
   toasts: Toast[];
   toast: (kind: Toast["kind"], text: string) => void;
   dismiss: (id: number) => void;
@@ -45,6 +53,19 @@ export const useUi = create<UiState>((set) => ({
   setProgress: (progress) => set({ progress }),
   busy: null,
   setBusy: (busy) => set({ busy }),
+  storms: [],
+  addStorm: (st) =>
+    set((s) => (s.storms.some((x) => x.message === st.message) ? s : { storms: [...s.storms, st].slice(-3) })),
+  dismissStorm: (message) => set((s) => ({ storms: s.storms.filter((x) => x.message !== message) })),
+  offWhenClosed: [],
+  queueOff: (profile, names) =>
+    set((s) => ({
+      offWhenClosed: [
+        ...s.offWhenClosed,
+        ...names.filter((n) => !s.offWhenClosed.some(([p, f]) => p === profile && f === n)).map((n) => [profile, n] as [string, string]),
+      ],
+    })),
+  clearOff: () => set({ offWhenClosed: [] }),
   toasts: [],
   toast: (kind, text) => {
     const id = nextToast++;

@@ -1,8 +1,8 @@
 import { lazy, Suspense, useEffect, useRef } from "react";
 import { listen } from "@tauri-apps/api/event";
 import { useQueryClient } from "@tanstack/react-query";
-import { api, errorText, type Progress } from "./api";
-import { keys, useSettings } from "./hooks";
+import { api, errorText, type ErrorStorm, type Progress } from "./api";
+import { keys, useGameStatus, useSettings } from "./hooks";
 import { useUi } from "./store";
 import { ProgressDock, TitleBar, Toasts } from "./components/Chrome";
 import { DialogHost } from "./components/Dialogs";
@@ -10,6 +10,8 @@ import { Sidebar } from "./components/Sidebar";
 import { Backdrop } from "./components/Backdrop";
 import { PlayPage } from "./pages/Play";
 import { checkForUpdate, UpdateDialog } from "./updater";
+import { LaunchGuardHost, StormBanner } from "./components/Guard";
+import { configureSound, installUiSounds, setAmbience, sfx } from "./sound";
 
 // Pages other than Play load on first visit, so startup only parses what it shows.
 const named = <K extends string>(load: () => Promise<Record<K, React.ComponentType>>, name: K) =>
@@ -23,10 +25,37 @@ const ProfilesPage = named(() => import("./pages/Profiles"), "ProfilesPage");
 const ServersPage = named(() => import("./pages/Servers"), "ServersPage");
 const ModSettingsPage = named(() => import("./pages/ModSettings"), "ModSettingsPage");
 const HealthPage = named(() => import("./pages/Health"), "HealthPage");
+const GameLogPage = named(() => import("./pages/GameLog"), "GameLogPage");
+const BackupsPage = named(() => import("./pages/Backups"), "BackupsPage");
 const SettingsPage = named(() => import("./pages/Settings"), "SettingsPage");
+
+/** Mods queued to turn off while the game ran are switched off once it closes. */
+async function afterGameClosed() {
+  const ui = useUi.getState();
+  const queued = ui.offWhenClosed;
+  ui.clearOff();
+  useUi.setState({ storms: [] });
+  if (queued.length === 0) return;
+  try {
+    // the backend notices the game closed on the same tick; give it a moment
+    await new Promise((r) => setTimeout(r, 500));
+    for (const [profile, full] of queued) await api.setModEnabled(profile, full, false);
+    ui.toast("success", `Turned off ${queued.length} mod${queued.length > 1 ? "s" : ""} that kept erroring`);
+  } catch (e) {
+    ui.toast("error", errorText(e));
+  }
+  queryClientRef?.invalidateQueries();
+}
+
+let queryClientRef: ReturnType<typeof useQueryClient> | null = null;
+
+function useGameStatusRunning() {
+  return useGameStatus().data?.running ?? false;
+}
 
 export default function App() {
   const qc = useQueryClient();
+  queryClientRef = qc;
   const { page, detail, setProgress, toast, setBusy } = useUi();
   const settingsData = useSettings().data;
   const theme = settingsData?.theme ?? "norse";
@@ -37,11 +66,28 @@ export default function App() {
     document.documentElement.dataset.theme = theme;
   }, [theme]);
 
+  // Sounds
+  const sounds = settingsData?.sounds ?? true;
+  const ambience = settingsData?.ambience ?? true;
+  const volume = settingsData?.volume ?? 0.6;
+  const running = useGameStatusRunning();
+  useEffect(() => installUiSounds(), []);
+  useEffect(() => configureSound({ sounds, ambience, volume }), [sounds, ambience, volume]);
+  // the campfire crackles on the Play screen, and goes quiet while the game is running
+  useEffect(() => setAmbience(page === "play" && !running), [page, running]);
+
   // Backend events
   useEffect(() => {
     const offs = [
       listen<Progress>("progress", (e) => setProgress(e.payload.done ? null : e.payload)),
-      listen<boolean>("game-running", () => qc.invalidateQueries({ queryKey: keys.game })),
+      listen<boolean>("game-running", (e) => {
+        qc.invalidateQueries({ queryKey: keys.game });
+        if (!e.payload) void afterGameClosed();
+      }),
+      listen<ErrorStorm>("error-storm", (e) => {
+        useUi.getState().addStorm(e.payload);
+        sfx.warn();
+      }),
     ];
     return () => {
       offs.forEach((p) => p.then((off) => off()));
@@ -96,7 +142,11 @@ export default function App() {
       <div className="body">
         <Sidebar />
         <Backdrop kind={backdrop} />
-        <main className={`content${page === "browse" || page === "installed" || page === "news" || page === "modsettings" ? " no-scroll" : ""}`}>
+        <main
+          className={`content${page === "play" ? " full" : ""}${
+            page === "browse" || page === "installed" || page === "news" || page === "modsettings" || page === "log" ? " no-scroll" : ""
+          }`}
+        >
           <Suspense fallback={null}>
           {page === "play" && <PlayPage />}
           {page === "news" && <NewsPage />}
@@ -107,6 +157,8 @@ export default function App() {
           {page === "servers" && <ServersPage />}
           {page === "modsettings" && <ModSettingsPage />}
           {page === "health" && <HealthPage />}
+          {page === "log" && <GameLogPage />}
+          {page === "backups" && <BackupsPage />}
           {page === "settings" && <SettingsPage />}
           </Suspense>
         </main>
@@ -117,6 +169,8 @@ export default function App() {
         </Suspense>
       )}
       <DialogHost />
+      <LaunchGuardHost />
+      <StormBanner />
       <UpdateDialog />
       <ProgressDock />
       <Toasts />

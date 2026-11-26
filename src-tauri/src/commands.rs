@@ -129,6 +129,12 @@ pub struct Prefs {
     show_nsfw: Option<bool>,
     show_deprecated: Option<bool>,
     backdrop: Option<String>,
+    launch_guard: Option<bool>,
+    backup_before_launch: Option<bool>,
+    backup_keep: Option<u32>,
+    sounds: Option<bool>,
+    ambience: Option<bool>,
+    volume: Option<f32>,
 }
 
 #[tauri::command]
@@ -148,6 +154,24 @@ pub fn save_prefs(state: State<'_, AppState>, prefs: Prefs) -> Result<Settings> 
         }
         if let Some(d) = prefs.show_deprecated {
             s.show_deprecated = d;
+        }
+        if let Some(v) = prefs.launch_guard {
+            s.launch_guard = v;
+        }
+        if let Some(v) = prefs.backup_before_launch {
+            s.backup_before_launch = v;
+        }
+        if let Some(v) = prefs.backup_keep {
+            s.backup_keep = v.clamp(1, 100);
+        }
+        if let Some(v) = prefs.sounds {
+            s.sounds = v;
+        }
+        if let Some(v) = prefs.ambience {
+            s.ambience = v;
+        }
+        if let Some(v) = prefs.volume {
+            s.volume = v.clamp(0.0, 1.0);
         }
         if let Some(b) = prefs.backdrop.filter(|b| ["aurora", "forest", "embers", "plain"].contains(&b.as_str())) {
             s.backdrop = b;
@@ -556,6 +580,9 @@ pub async fn install_mod(
 ) -> Result<Profile> {
     let _lock = state.ops.lock().await;
     state.ensure_not_running()?;
+    if profiles::load(&profile).ok().and_then(|p| p.find(&full_name).map(|m| m.version.clone())).is_some() {
+        let _ = crate::snapshots::create(&profile, &format!("Before changing {}", short_name(&full_name)));
+    }
     let result = install_with_deps(&app, &state, &profile, &full_name, version.as_deref()).await;
     emit_done(&app);
     result
@@ -570,6 +597,11 @@ pub async fn update_mods(
 ) -> Result<Profile> {
     let _lock = state.ops.lock().await;
     state.ensure_not_running()?;
+    let reason = match full_names.as_slice() {
+        [one] => format!("Before updating {}", short_name(one)),
+        many => format!("Before updating {} mods", many.len()),
+    };
+    let _ = crate::snapshots::create(&profile, &reason);
     let mut last = profiles::load(&profile)?;
     for name in full_names {
         match install_with_deps(&app, &state, &profile, &name, None).await {
@@ -591,6 +623,7 @@ pub async fn uninstall_mod(state: State<'_, AppState>, profile: String, full_nam
     if full_name == BEPINEX_PACK {
         return Err(AppError::msg("BepInEx is what loads every mod, so it can't be removed from a profile."));
     }
+    let _ = crate::snapshots::create(&profile, &format!("Before uninstalling {}", short_name(&full_name)));
     let mut p = profiles::load(&profile)?;
     let m = p
         .find(&full_name)
@@ -890,6 +923,23 @@ pub async fn launch_game(
             emit_done(&app);
             doorstop::install_proxy_from_pack(&game.path, &zip?)?;
         }
+        if settings.backup_before_launch {
+            emit_progress(&app, "Backing up your worlds and characters", 1, 1, 0, 0);
+            let pkg = game.package_family.clone();
+            let keep = settings.backup_keep as usize;
+            let reason = format!("Before playing {profile_name}");
+            let backed_up = tokio::task::spawn_blocking(move || crate::backups::create(pkg.as_deref(), &reason, true, keep)).await;
+            emit_done(&app);
+            match backed_up {
+                Ok(Ok(_)) => {}
+                Ok(Err(e)) => {
+                    return Err(AppError::msg(format!(
+                        "Couldn't back up your saves, so the game wasn't started: {e}. You can turn off backups before playing in Settings."
+                    )))
+                }
+                Err(e) => return Err(AppError::msg(e.to_string())),
+            }
+        }
         doorstop::configure(&game.path, Some(&profiles::dir(&profile_name)))?;
     }
 
@@ -919,6 +969,7 @@ pub fn open_folder(app: AppHandle, state: State<'_, AppState>, kind: String, pro
         "plugins" => profile_dir().join("BepInEx").join("plugins"),
         "log" => profile_dir().join("BepInEx").join("LogOutput.log"),
         "data" => crate::settings::data_dir(),
+        "backups" => crate::backups::backup_dir(),
         _ => return Err(AppError::msg("Unknown folder")),
     };
     if !path.exists() {
@@ -963,16 +1014,37 @@ pub fn spawn_game_watcher(app: AppHandle) {
         use tauri::Manager;
         let mut sys = sysinfo::System::new();
         let mut last = false;
+        let mut watch: Option<crate::guard::LogWatch> = None;
         loop {
             let now = launch::is_running(&mut sys);
             if now != last {
                 last = now;
                 if let Some(state) = app.try_state::<AppState>() {
                     state.running.store(now, Ordering::Relaxed);
+                    // follow the mod log of a modded session to catch mods that error nonstop
+                    watch = if now {
+                        state
+                            .settings()
+                            .game
+                            .and_then(|g| crate::guard::modded_profile(&g.path))
+                            .map(|p| crate::guard::LogWatch::new(&p))
+                    } else {
+                        None
+                    };
                 }
                 let _ = app.emit("game-running", now);
+            }
+            if let Some(w) = watch.as_mut() {
+                for storm in w.poll() {
+                    let _ = app.emit("error-storm", storm);
+                }
             }
             std::thread::sleep(std::time::Duration::from_secs(2));
         }
     });
+}
+
+/// "Owner-Mod_Name" -> "Mod Name" for messages.
+fn short_name(full_name: &str) -> String {
+    full_name.split_once('-').map(|(_, n)| n).unwrap_or(full_name).replace('_', " ")
 }

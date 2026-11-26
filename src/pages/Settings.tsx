@@ -11,6 +11,7 @@ import { confirmDialog } from "../components/Dialogs";
 import { checkForUpdate, useUpdater } from "../updater";
 import { BACKDROPS } from "../components/Backdrop";
 import { useUi } from "../store";
+import { configureSound, sfx } from "../sound";
 
 const platformName = (p?: string) => (p === "xbox" ? "Xbox app" : p === "steam" ? "Steam" : "Custom folder");
 
@@ -45,6 +46,7 @@ export function SettingsPage() {
   const vanilla = useAction(api.disableModsInGame, { success: "Mods are off for the next launch" });
   const clear = useAction(api.clearDownloadCache, { success: (n) => `Freed ${formatBytes(n)}` });
   const [args, setArgs] = useState("");
+  const [vol, setVol] = useState<number | null>(null);
   useEffect(() => setArgs(settings?.extraArgs ?? ""), [settings?.extraArgs]);
 
   if (!settings) return null;
@@ -156,6 +158,30 @@ export function SettingsPage() {
             <ShieldOff /> Switch to vanilla
           </button>
         </div>
+        <div className="setting-row">
+          <div className="text">
+            <div className="title">Check mods before playing</div>
+            <div className="desc">
+              Before a modded launch, looks for mods built for an older game version (the kind that make Valheim stop
+              responding) and offers to turn them off. While you play, warns when a mod errors nonstop.
+            </div>
+          </div>
+          <Switch label="Check mods before playing" on={settings.launchGuard} onChange={(v) => prefs.mutate([{ launchGuard: v }])} />
+        </div>
+        <div className="setting-row">
+          <div className="text">
+            <div className="title">Back up worlds before modded play</div>
+            <div className="desc">
+              Copies your worlds and characters into ModHeim's backups folder first, only when they changed since the
+              last backup. Your save files are only read, never changed.
+            </div>
+          </div>
+          <Switch
+            label="Back up worlds before modded play"
+            on={settings.backupBeforeLaunch}
+            onChange={(v) => prefs.mutate([{ backupBeforeLaunch: v }])}
+          />
+        </div>
       </div>
 
       <h2 className="section">Appearance</h2>
@@ -184,6 +210,47 @@ export function SettingsPage() {
           </div>
         </div>
         <BackgroundRow current={settings.background} />
+      </div>
+
+      <h2 className="section">Sound</h2>
+      <div className="panel pad">
+        <div className="setting-row">
+          <div className="text">
+            <div className="title">Menu sounds</div>
+            <div className="desc">Soft clicks on buttons and a horn when the game starts.</div>
+          </div>
+          <Switch label="Menu sounds" on={settings.sounds} onChange={(v) => prefs.mutate([{ sounds: v }])} />
+        </div>
+        <div className="setting-row">
+          <div className="text">
+            <div className="title">Campfire</div>
+            <div className="desc">A crackling fire on the Play screen. Goes quiet while the game is running.</div>
+          </div>
+          <Switch label="Campfire" on={settings.ambience} onChange={(v) => prefs.mutate([{ ambience: v }])} />
+        </div>
+        <div className="setting-row">
+          <div className="text">
+            <div className="title">Volume</div>
+          </div>
+          <input
+            type="range"
+            className="range"
+            min={0}
+            max={100}
+            aria-label="Volume"
+            value={Math.round((vol ?? settings.volume) * 100)}
+            onChange={(e) => {
+              const v = Number(e.target.value) / 100;
+              setVol(v);
+              configureSound({ sounds: settings.sounds, ambience: settings.ambience, volume: v });
+            }}
+            onPointerUp={() => {
+              if (vol !== null && vol !== settings.volume) prefs.mutate([{ volume: vol }]);
+              sfx.click();
+            }}
+            onKeyUp={() => vol !== null && vol !== settings.volume && prefs.mutate([{ volume: vol }])}
+          />
+        </div>
       </div>
 
       <h2 className="section">ModHeim updates</h2>
@@ -276,7 +343,7 @@ function BackgroundRow({ current }: { current: string | null }) {
         <div className="desc">
           {current
             ? "Using your own picture."
-            : "Using the ModHeim scene. Pick one of your own Valheim screenshots to put it behind the Play button instead (Win+Alt+PrtScn takes one in game)."}
+            : "Using the ModHeim scene. Pick one of your own Valheim screenshots to put it behind the Play menu instead (Win+Alt+PrtScn takes one in game)."}
         </div>
       </div>
       <div className="row">

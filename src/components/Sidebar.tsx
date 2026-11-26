@@ -1,5 +1,7 @@
 import {
+  Archive,
   Compass,
+  ScrollText,
   HeartPulse,
   Layers,
   Newspaper,
@@ -29,6 +31,7 @@ const GROUPS: { title?: string; items: NavItem[] }[] = [
       { id: "installed", label: "Installed", icon: Package },
       { id: "modsettings", label: "Mod Settings", icon: SlidersHorizontal },
       { id: "health", label: "Health Check", icon: HeartPulse },
+      { id: "log", label: "Game Log", icon: ScrollText },
       { id: "profiles", label: "Profiles", icon: Layers },
     ],
   },
@@ -37,6 +40,7 @@ const GROUPS: { title?: string; items: NavItem[] }[] = [
     items: [
       { id: "servers", label: "Servers", icon: Server },
       { id: "themes", label: "Game Themes", icon: Palette },
+      { id: "backups", label: "Backups", icon: Archive },
     ],
   },
 ];

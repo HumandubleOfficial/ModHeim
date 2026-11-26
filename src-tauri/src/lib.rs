@@ -1,10 +1,13 @@
+mod backups;
 mod commands;
+mod compat;
 mod doorstop;
 mod error;
 mod external;
 mod features;
 mod game;
 mod game_theme;
+mod guard;
 mod health;
 mod launch;
 mod modconfig;
@@ -13,6 +16,7 @@ mod news;
 mod profiles;
 mod serverquery;
 mod settings;
+mod snapshots;
 mod thunderstore;
 
 use commands::*;
@@ -42,6 +46,12 @@ pub fn run() {
         .manage(state)
         .setup(|app| {
             spawn_game_watcher(app.handle().clone());
+            // index the game's DLLs in the background so the first launch check is instant
+            if let Some(g) = settings::Settings::load().game {
+                std::thread::spawn(move || {
+                    let _ = compat::game_index(&g.path);
+                });
+            }
             Ok(())
         })
         .invoke_handler(tauri::generate_handler![
@@ -95,6 +105,17 @@ pub fn run() {
             get_background,
             list_external_profiles,
             import_external_profile,
+            launch_check,
+            read_log,
+            crash_report,
+            save_text_file,
+            list_snapshots,
+            create_snapshot,
+            restore_snapshot,
+            delete_snapshot,
+            list_backups,
+            create_backup,
+            delete_backup,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

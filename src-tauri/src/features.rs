@@ -283,3 +283,118 @@ pub async fn import_external_profile(
     emit_done(&app);
     r
 }
+
+// ================================================================ safe launch guard + game log
+
+/// Mods likely to break with the installed game version, or that errored a lot last launch.
+#[tauri::command]
+pub async fn launch_check(state: State<'_, AppState>, profile: Option<String>) -> Result<crate::guard::LaunchCheck> {
+    let game = state.game()?;
+    let profile = profile.unwrap_or_else(|| state.settings().active_profile);
+    let version = crate::game::current_version(&game).or(game.version.clone());
+    tokio::task::spawn_blocking(move || crate::guard::launch_check(&profile, &game.path, version))
+        .await
+        .map_err(|e| AppError::msg(e.to_string()))?
+}
+
+#[tauri::command]
+pub async fn read_log(profile: String, from: u64) -> crate::guard::LogChunk {
+    tokio::task::spawn_blocking(move || crate::guard::read_log(&profile, from)).await.unwrap_or(crate::guard::LogChunk {
+        text: String::new(),
+        next: 0,
+        reset: true,
+        exists: false,
+    })
+}
+
+#[tauri::command]
+pub async fn crash_report(app: AppHandle, state: State<'_, AppState>, profile: String) -> Result<String> {
+    let version = app.package_info().version.to_string();
+    let game = state.game().ok();
+    tokio::task::spawn_blocking(move || crate::guard::crash_report(&profile, &version, game.as_ref()))
+        .await
+        .map_err(|e| AppError::msg(e.to_string()))?
+}
+
+#[tauri::command]
+pub fn save_text_file(path: String, text: String) -> Result<()> {
+    let p = std::path::PathBuf::from(&path);
+    if !p.extension().is_some_and(|e| e.eq_ignore_ascii_case("txt") || e.eq_ignore_ascii_case("log")) {
+        return Err(AppError::msg("Save it as a .txt file"));
+    }
+    std::fs::write(p, text)?;
+    Ok(())
+}
+
+// ================================================================ restore points
+
+#[tauri::command]
+pub fn list_snapshots(profile: String) -> Vec<crate::snapshots::Snapshot> {
+    crate::snapshots::list(&profile)
+}
+
+#[tauri::command]
+pub async fn create_snapshot(state: State<'_, AppState>, profile: String) -> Result<crate::snapshots::Snapshot> {
+    let _lock = state.ops.lock().await;
+    tokio::task::spawn_blocking(move || crate::snapshots::create(&profile, "Saved by you"))
+        .await
+        .map_err(|e| AppError::msg(e.to_string()))?
+}
+
+#[tauri::command]
+pub async fn restore_snapshot(state: State<'_, AppState>, profile: String, id: String) -> Result<crate::snapshots::Snapshot> {
+    let _lock = state.ops.lock().await;
+    state.ensure_not_running()?;
+    tokio::task::spawn_blocking(move || crate::snapshots::restore(&profile, &id))
+        .await
+        .map_err(|e| AppError::msg(e.to_string()))?
+}
+
+#[tauri::command]
+pub fn delete_snapshot(profile: String, id: String) -> Result<()> {
+    crate::snapshots::delete(&profile, &id)
+}
+
+// ================================================================ save backups (read-only)
+
+#[derive(serde::Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct BackupInfo {
+    backups: Vec<crate::backups::Backup>,
+    sources: Vec<crate::backups::SaveSource>,
+    folder: String,
+}
+
+#[tauri::command]
+pub async fn list_backups(state: State<'_, AppState>) -> Result<BackupInfo> {
+    let pkg = state.settings().game.and_then(|g| g.package_family);
+    tokio::task::spawn_blocking(move || BackupInfo {
+        backups: crate::backups::list(),
+        sources: crate::backups::describe_sources(pkg.as_deref()),
+        folder: crate::backups::backup_dir().to_string_lossy().into(),
+    })
+    .await
+    .map_err(|e| AppError::msg(e.to_string()))
+}
+
+#[tauri::command]
+pub async fn create_backup(app: AppHandle, state: State<'_, AppState>) -> Result<Option<crate::backups::Backup>> {
+    let _lock = state.ops.lock().await;
+    if state.running.load(std::sync::atomic::Ordering::Relaxed) {
+        return Err(AppError::msg("Close Valheim first: it may be in the middle of saving."));
+    }
+    let settings = state.settings();
+    let pkg = settings.game.and_then(|g| g.package_family);
+    let keep = settings.backup_keep as usize;
+    emit_progress(&app, "Backing up your worlds and characters", 1, 1, 0, 0);
+    let r = tokio::task::spawn_blocking(move || crate::backups::create(pkg.as_deref(), "Backed up by you", false, keep))
+        .await
+        .map_err(|e| AppError::msg(e.to_string()));
+    emit_done(&app);
+    r?
+}
+
+#[tauri::command]
+pub fn delete_backup(file: String) -> Result<()> {
+    crate::backups::delete(&file)
+}

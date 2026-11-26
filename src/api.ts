@@ -32,7 +32,22 @@ export interface Settings {
   /** Custom Play-screen picture (file name in the data folder), or null for the built-in scene. */
   background: string | null;
   backdrop: Backdrop;
+  launchGuard: boolean;
+  backupBeforeLaunch: boolean;
+  backupKeep: number;
+  sounds: boolean;
+  ambience: boolean;
+  /** 0..1 */
+  volume: number;
 }
+
+export type Prefs = Partial<
+  Pick<
+    Settings,
+    | "theme" | "launchMethod" | "extraArgs" | "showNsfw" | "showDeprecated" | "backdrop"
+    | "launchGuard" | "backupBeforeLaunch" | "backupKeep" | "sounds" | "ambience" | "volume"
+  >
+>;
 
 export type Backdrop = "aurora" | "forest" | "embers" | "plain";
 
@@ -270,12 +285,73 @@ export interface ExternalProfile {
   modified: number;
 }
 
+export interface GuardIssue {
+  fullName: string;
+  name: string;
+  /** Things the mod uses that this game version doesn't have. */
+  missing: string[];
+  /** Errors traced to it in the last launch. */
+  errors: number;
+  example: string | null;
+}
+
+export interface LaunchCheck {
+  profile: string;
+  gameVersion: string | null;
+  issues: GuardIssue[];
+}
+
+export interface ErrorStorm {
+  profile: string;
+  message: string;
+  count: number;
+  /** [name, fullName] */
+  mods: [string, string][];
+}
+
+export interface LogChunk {
+  text: string;
+  next: number;
+  reset: boolean;
+  exists: boolean;
+}
+
+export interface Snapshot {
+  id: string;
+  profile: string;
+  created: string;
+  reason: string;
+  modCount: number;
+  bytes: number;
+}
+
+export interface Backup {
+  file: string;
+  created: string;
+  reason: string;
+  bytes: number;
+  files: number;
+  worlds: string[];
+}
+
+export interface SaveSource {
+  label: string;
+  path: string;
+  files: number;
+  bytes: number;
+}
+
+export interface BackupInfo {
+  backups: Backup[];
+  sources: SaveSource[];
+  folder: string;
+}
+
 export const BEPINEX_PACK = "denikson-BepInExPack_Valheim";
 
 export const api = {
   getSettings: () => invoke<Settings>("get_settings"),
-  savePrefs: (prefs: Partial<Pick<Settings, "theme" | "launchMethod" | "extraArgs" | "showNsfw" | "showDeprecated" | "backdrop">>) =>
-    invoke<Settings>("save_prefs", { prefs }),
+  savePrefs: (prefs: Prefs) => invoke<Settings>("save_prefs", { prefs }),
 
   detectGames: () => invoke<GameInstall[]>("detect_games"),
   setGame: (path: string) => invoke<GameInstall>("set_game", { path }),
@@ -334,6 +410,20 @@ export const api = {
   importExternalProfile: (path: string, name?: string) =>
     invoke<ImportResult>("import_external_profile", { path, name: name ?? null }),
 
+  launchCheck: (profile?: string) => invoke<LaunchCheck>("launch_check", { profile: profile ?? null }),
+  readLog: (profile: string, from: number) => invoke<LogChunk>("read_log", { profile, from }),
+  crashReport: (profile: string) => invoke<string>("crash_report", { profile }),
+  saveTextFile: (path: string, text: string) => invoke<void>("save_text_file", { path, text }),
+
+  listSnapshots: (profile: string) => invoke<Snapshot[]>("list_snapshots", { profile }),
+  createSnapshot: (profile: string) => invoke<Snapshot>("create_snapshot", { profile }),
+  restoreSnapshot: (profile: string, id: string) => invoke<Snapshot>("restore_snapshot", { profile, id }),
+  deleteSnapshot: (profile: string, id: string) => invoke<void>("delete_snapshot", { profile, id }),
+
+  listBackups: () => invoke<BackupInfo>("list_backups"),
+  createBackup: () => invoke<Backup | null>("create_backup"),
+  deleteBackup: (file: string) => invoke<void>("delete_backup", { file }),
+
   saveServer: (server: Server) => invoke<Settings>("save_server", { server }),
   deleteServer: (id: string) => invoke<Settings>("delete_server", { id }),
 
@@ -341,7 +431,7 @@ export const api = {
     invoke<void>("launch_game", { vanilla, serverId: serverId ?? null }),
   disableModsInGame: () => invoke<void>("disable_mods_in_game"),
 
-  openFolder: (kind: "game" | "profile" | "config" | "plugins" | "log" | "data", profile?: string) =>
+  openFolder: (kind: "game" | "profile" | "config" | "plugins" | "log" | "data" | "backups", profile?: string) =>
     invoke<void>("open_folder", { kind, profile: profile ?? null }),
   openUrl: (url: string) => invoke<void>("open_url", { url }),
   clearDownloadCache: () => invoke<number>("clear_download_cache"),

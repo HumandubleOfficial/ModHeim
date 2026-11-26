@@ -49,11 +49,11 @@ pub struct HealthReport {
     pub mod_issues: Vec<ModIssue>,
 }
 
-struct Entry {
-    level: String,
-    source: String,
-    first: String,
-    rest: Vec<String>,
+pub(crate) struct Entry {
+    pub(crate) level: String,
+    pub(crate) source: String,
+    pub(crate) first: String,
+    pub(crate) rest: Vec<String>,
 }
 
 fn norm(s: &str) -> String {
@@ -61,7 +61,7 @@ fn norm(s: &str) -> String {
 }
 
 /// Split a BepInEx LogOutput.log into entries: "[Level  :Source] message" plus continuation lines.
-fn entries(log: &str) -> Vec<Entry> {
+pub(crate) fn entries(log: &str) -> Vec<Entry> {
     let mut out: Vec<Entry> = Vec::new();
     for line in log.lines() {
         let parsed = line.strip_prefix('[').and_then(|rest| {
@@ -86,7 +86,7 @@ fn entries(log: &str) -> Vec<Entry> {
 }
 
 /// Which installed mod an issue belongs to: the logging plugin's name, or a mod DLL named in the stack trace.
-fn attribute(e: &Entry, profile: &Profile) -> Option<(String, String)> {
+pub(crate) fn attribute(e: &Entry, profile: &Profile) -> Option<(String, String)> {
     let source = norm(&e.source);
     let skip = ["unitylog", "bepinex", "harmonyx", "preloader"];
     if !skip.contains(&source.as_str()) {
