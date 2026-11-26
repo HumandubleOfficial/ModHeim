@@ -1,6 +1,6 @@
 [package]
 name = "modheim"
-version = "0.2.0"
+version = "0.3.0"
 description = "ModHeim - a Valheim mod launcher"
 authors = ["ModHeim"]
 edition = "2024"
